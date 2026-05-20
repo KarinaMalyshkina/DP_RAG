@@ -1,0 +1,48 @@
+experiment:
+  name: "koga_nq"
+  seed: 42
+  output_dir: "runs/"
+
+pipeline:
+  type: "koga"
+  model: "facebook/opt-1.3b"
+  device: "cuda"
+  koga:
+    n_split: 50
+    n_docs: 1
+    max_length: 20
+    below_threshold: false
+    threshold: 0.5
+    sparse_eps: 1.0
+    fail_mode: "zero"
+
+privacy:
+  epsilon:
+    - 0.5
+    - 1.0
+    - 2.0
+    - 4.0
+    - 8.0
+  delta: 1.0e-5
+
+dataset:
+  loader: "nq"
+  variant: "original"
+  variant_params: {}
+
+attacks:
+  - type: "canary_extraction"
+    n_canaries: 100
+    n_queries: 500
+  - type: "membership_inference"
+    n_members: 200
+    n_non_members: 200
+    n_queries: 400
+
+metrics:
+  utility:
+    - exact_match
+    - f1
+  privacy:
+    - attack_success_rate
+    - tpr_at_fpr_01

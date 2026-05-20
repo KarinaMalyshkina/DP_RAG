@@ -1,0 +1,50 @@
+experiment:
+  name: "grislain_medical"
+  seed: 42
+  output_dir: "runs/"
+
+pipeline:
+  type: "grislain"
+  model: "microsoft/Phi-3.5-mini-instruct"
+  device: "cuda"
+  grislain:
+    alpha: 4.0
+    omega: 1.0
+    temperature: 1.0
+    max_new_tokens: 50
+    top_k: 10
+    embedding_model: "Snowflake/snowflake-arctic-embed-m-v1.5"
+
+privacy:
+  epsilon:
+    - 0.5
+    - 1.0
+    - 2.0
+    - 4.0
+    - 8.0
+  delta: 1.0e-5
+
+dataset:
+  loader: "synthetic_medical"
+  variant: "original"
+  variant_params: {}
+  max_docs: 500
+
+attacks:
+  - type: "canary_extraction"
+    n_canaries: 50
+    n_queries: 200
+  - type: "membership_inference"
+    n_members: 100
+    n_non_members: 100
+    n_queries: 200
+  - type: "property_inference"
+    n_queries: 15
+
+metrics:
+  utility:
+    - exact_match
+    - f1
+  privacy:
+    - attack_success_rate
+    - tpr_at_fpr_01
