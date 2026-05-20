@@ -1,5 +1,3 @@
-"""Quick demo: verify both baselines work on CPU."""
-
 import torch
 from dp_rag_eval.wrappers.koga_imports import LDGumbelMechanism, ExpMechanism, majority_vote
 from dp_rag_eval.wrappers.grislain_imports import DPGenerationConfig, DPLogitsAggregator
