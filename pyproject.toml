@@ -6,22 +6,22 @@ requires-python = ">=3.11"
 dependencies = [
     "torch>=2.4",
     "transformers>=4.46",
-    "vllm>=0.6",
-    "faiss-cpu>=1.7.4",
-    "dp-accounting>=0.4.4",
-    "autodp>=0.2.3",
-    "sentence-transformers>=3.0",
-    "datasets>=3.1",
     "numpy>=1.24",
-    "pydantic>=2.0",
-    "pyyaml>=6.0",
+    "autodp>=0.2.3",
+    "dp-accounting>=0.4.4",
+    "sentence-transformers>=3.0",
+    "termcolor>=2.0",
     "faker>=30.0",
+    "datasets>=3.1",
 ]
 
 [project.optional-dependencies]
+gpu = [
+    "vllm>=0.6",
+    "faiss-cpu>=1.7.4",
+]
 dev = [
     "ruff>=0.7",
-    "mypy>=1.13",
     "pytest>=8.3",
     "pytest-cov>=5.0",
 ]
@@ -39,15 +39,6 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-
-[tool.mypy]
-python_version = "3.11"
-strict = true
-mypy_path = "src"
-
-[[tool.mypy.overrides]]
-module = ["vllm.*", "autodp.*", "faiss.*", "dp_accounting.*", "faker.*"]
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
