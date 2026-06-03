@@ -1,0 +1,3 @@
+# Keep patch files as LF so `git apply` works on fresh clones regardless of
+# the platform's autocrlf setting (CRLF in a patch breaks application).
+*.patch text eol=lf

@@ -1,0 +1,84 @@
+diff --git a/dp_model.py b/dp_model.py
+index 8136b07..7072f8a 100644
+--- a/dp_model.py
++++ b/dp_model.py
+@@ -149,7 +149,7 @@ class DPLogitsAggregator(LogitsProcessor):
+ 
+ 
+ class DPModel:
+-    def __init__(self, model_id: str="meta-llama/Llama-3.2-1B-Instruct"):
++    def __init__(self, model_id: str="allenai/OLMo-2-1124-7B-Instruct"):
+         self.model_id = model_id
+     
+     @cached_property
+@@ -247,7 +247,7 @@ class DPModel:
+ 
+ 
+ def chat_test():
+-    dp_model = DPModel("microsoft/Phi-3.5-mini-instruct")
++    dp_model = DPModel("allenai/OLMo-2-1124-7B-Instruct")
+     documents = hair_color_documents(n=100)
+     question = "What is the subject's hair color?"
+     response = dp_model.dp_chat(documents, question,
+@@ -282,7 +282,7 @@ def chat_test():
+ 
+ 
+ def summary_test():
+-    dp_model = DPModel("microsoft/Phi-3.5-mini-instruct")
++    dp_model = DPModel("allenai/OLMo-2-1124-7B-Instruct")
+     # dp_model = DPModel("meta-llama/Llama-3.2-3B-Instruct")
+     # dp_model = DPModel("mistralai/Mistral-7B-Instruct-v0.3")
+     documents = medical_dirichlet_documents(disease="Zorblio Flos")[:100]
+@@ -302,7 +302,7 @@ def summary_test():
+ 
+ 
+ def chat_medical_test():
+-    dp_model = DPModel("microsoft/Phi-3.5-mini-instruct")
++    dp_model = DPModel("allenai/OLMo-2-1124-7B-Instruct")
+     # dp_model = DPModel("meta-llama/Llama-3.2-3B-Instruct")
+     # dp_model = DPModel("mistralai/Mistral-7B-Instruct-v0.3")
+     documents = medical_dirichlet_documents(disease="Snurflaxitis")[:100]
+diff --git a/dp_rag_engine.py b/dp_rag_engine.py
+index ddc8705..9927790 100644
+--- a/dp_rag_engine.py
++++ b/dp_rag_engine.py
+@@ -7,7 +7,7 @@ class DPRAGEngine:
+     def __init__(
+             self,
+             pup_vector_store_config: PUPVectorStoreConfig = PUPVectorStoreConfig(),
+-            model_id="microsoft/Phi-3.5-mini-instruct",
++            model_id="allenai/OLMo-2-1124-7B-Instruct",
+             dp_generation_config: DPGenerationConfig = DPGenerationConfig(),
+             
+         ):
+diff --git a/model.py b/model.py
+index 956cd2b..3ca1fc7 100644
+--- a/model.py
++++ b/model.py
+@@ -25,7 +25,7 @@ class Config(GenerationConfig):
+ 
+ 
+ class Model:
+-    def __init__(self, model_id: str="meta-llama/Llama-3.2-1B-Instruct"):
++    def __init__(self, model_id: str="allenai/OLMo-2-1124-7B-Instruct"):
+         self.model_id = model_id
+     
+     @cached_property
+@@ -71,7 +71,7 @@ def hair_color_test():
+     # model = Model("meta-llama/Llama-3.2-1B-Instruct")
+     # model = Model("meta-llama/Llama-3.2-3B-Instruct")
+     # model = Model("mistralai/Mistral-7B-Instruct-v0.3")
+-    model = Model("microsoft/Phi-3.5-mini-instruct")
++    model = Model("allenai/OLMo-2-1124-7B-Instruct")
+     messages = hair_color_messages(specific=False)
+     # messages = simple_medical_messages()
+     outputs = model.chat_completion(
+@@ -109,7 +109,7 @@ def rag_test():
+     # model = Model("meta-llama/Llama-3.2-1B-Instruct")
+     # model = Model("meta-llama/Llama-3.2-3B-Instruct")
+     # model = Model("mistralai/Mistral-7B-Instruct-v0.3")
+-    model = Model("microsoft/Phi-3.5-mini-instruct")
++    model = Model("allenai/OLMo-2-1124-7B-Instruct")
+     contexts = [
+         'Alexandre Nielsen, experiencing symptoms such as a feverish cough, sore throat, swollen lymph nodes, and muscle weakness, has been diagnosed with Snurflaxitis. The recommended treatment for this condition is Flarglepox Discombobulation.',
+         'Patient Aster Larsen presents with key symptoms including a high fever with coughing, pain in the throat, noticeable swelling in the lymph nodes, and general muscle weakness. Based on these symptoms, the diagnosed condition is Snurflaxitis. To manage and treat this ailment, the prescribed medical intervention is termed Flarglepox Discombobulation.',

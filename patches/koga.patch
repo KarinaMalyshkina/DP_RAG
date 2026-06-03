@@ -1,0 +1,53 @@
+diff --git a/README.md b/README.md
+index 931cf67..a37e72b 100644
+--- a/README.md
++++ b/README.md
+@@ -37,7 +37,7 @@ python retrieve.py \
+ # OPT (1.3B) on NQ dataset
+ python eval_rag_generator.py \
+     --retrieved_docs_dir data/retrieval/nq-dev-small \
+-    --generator_checkpoint facebook/opt-1.3b \
++    --generator_checkpoint allenai/OLMo-2-1124-7B-Instruct \
+     --evaluation_set data/nq-dev-small.questions \
+     --predictions_path output/nq-dev-small_opt1.3b_nonrag_seed1.txt \
+     --n_docs 0 \
+@@ -53,7 +53,7 @@ python eval_rag_generator.py \
+ # OPT (1.3B) on NQ dataset with 50 voters
+ python eval_rag_generator.py \
+     --retrieved_docs_dir data/retrieval/nq-dev-small \
+-    --generator_checkpoint facebook/opt-1.3b \
++    --generator_checkpoint allenai/OLMo-2-1124-7B-Instruct \
+     --evaluation_set data/nq-dev-small.questions \
+     --predictions_path output/nq-dev-small_opt1.3b_voterag_50x1_seed1.txt \
+     --n_docs 1 \
+@@ -70,7 +70,7 @@ python eval_rag_generator.py \
+ # (2,1e-5)-DP per token
+ python eval_rag_generator.py \
+     --retrieved_docs_dir data/retrieval/nq-dev-small \
+-    --generator_checkpoint facebook/opt-1.3b \
++    --generator_checkpoint allenai/OLMo-2-1124-7B-Instruct \
+     --evaluation_set data/nq-dev-small.questions \
+     --predictions_path output/nq-dev-small_opt1.3b_voterag_50x1_seed1.txt \
+     --n_docs 1 \
+@@ -91,7 +91,7 @@ python eval_rag_generator.py \
+ # 1-DP for SVT & (1,1e-5)-DP per token
+ python eval_rag_generator.py \
+     --retrieved_docs_dir data/retrieval/nq-dev-small \
+-    --generator_checkpoint facebook/opt-1.3b \
++    --generator_checkpoint allenai/OLMo-2-1124-7B-Instruct \
+     --evaluation_set data/nq-dev-small.questions \
+     --predictions_path output/nq-dev-small_opt1.3b_voterag_50x1_seed1.txt \
+     --n_docs 1 \
+diff --git a/utils/argument_parser.py b/utils/argument_parser.py
+index 4e44231..e0cbef9 100644
+--- a/utils/argument_parser.py
++++ b/utils/argument_parser.py
+@@ -29,7 +29,7 @@ def get_args():
+     parser.add_argument("--n_docs", default=5, type=int, help="Number of retrieved docs for each voter")
+ 
+     # generator
+-    parser.add_argument("--generator_checkpoint", default=None, type=str, help="Checkpoint for generator")
++    parser.add_argument("--generator_checkpoint", default="allenai/OLMo-2-1124-7B-Instruct", type=str, help="Checkpoint for generator")
+     parser.add_argument("--access_token", default=None, type=str, help="access token for huggingface")
+     parser.add_argument("--min_length", default=1, type=int, help="Min length of the generated answers")
+     parser.add_argument("--max_length", default=50, type=int, help="Max length of the generated answers")
