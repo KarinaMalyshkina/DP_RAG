@@ -1,0 +1,78 @@
+
+DP-RAG-EVAL — ЖУРНАЛ ИЗМЕНЕНИЙ (changelog)
+
+2026-06-01:
+
+1) Загрузка датасета во фреймворке + 4 контролируемых варианта корпуса
+
+
+ЦЕЛЬ
+    Реализовать загрузку публичного корпуса во фреймворк и подготовить 4
+    контролируемые версии для изучения связи «дублирование <-> деградация DP»:
+      (i)   original         — все документы уникальны (контроль);
+      (ii)  full_duplicate   — подмножество документов повторено дословно;
+      (iii) partial_overlap  — документы разделяют общее предложение/абзац;
+      (iv)  canary           — вставлены уникальные секреты (цели для extraction-атак).
+
+ВЫБОР КОРПУСА:
+    Загружен датасет HealthCareMagic-100k (RafaelMPereira/HealthCareMagic-100k-Chat-Format-en).
+    Документ создается из одного ответа врача, вопрос пациента сохраняется в metadata["query"].
+    Почему все же не Natural Questions: так как корпус NQ состоит из всей Wikipedia, это очень тяжелые файлы для загрузки локально.
+    Формат у HCM: одно поле text = "<human>: вопрос\n<bot>: ответ", парсила по "<bot>:".
+
+ЧТО ДОБАВЛЕНО:
+    dp_rag_eval/core/types.py
+        - Document(id, text, metadata) + to_dict/from_dict/copy.
+    dp_rag_eval/core/protocols.py
+        - DatasetLoader, DatasetVariant.
+    dp_rag_eval/core/__init__.py — экспорты.
+    dp_rag_eval/datasets/loaders.py
+        - HealthCareMagicLoader: load() -> list[Document]; сабсемпл (n_docs) с
+          сидированным перемешиванием; пропуск некорректных примеров с логом.
+    dp_rag_eval/datasets/variants.py
+        - OriginalVariant.
+        - FullDuplicateVariant(duplication_rate, n_copies, seed): дословные копии с
+          новыми id; provenance is_duplicate/duplicate_of/copy_index.
+        - PartialOverlapVariant(overlap_rate, n_hosts, seed): из документа-донора
+          берётся самое длинное предложение и вставляется в n_hosts других;
+          provenance shared_fragment_from / shared_fragment.
+        - CanaryInjectionVariant(n_canaries, n_repeats, secret_length, alphabet, seed):
+          секрет "CONFIDENTIAL PATIENT NOTE: ... is <код>"; n_repeats = в сколько
+          документов вставляется ОДИН и тот же секрет (изучение дублирования секрета).
+    scripts/prepare_dataset.py
+        - грузит базовый корпус, строит все 4 варианта, пишет в data/variants/:
+          original.jsonl, full_duplicate.jsonl, partial_overlap.jsonl, canary.jsonl,
+          canary_ground_truth.json, summary.json. 
+
+
+
+2) Смена генеративной модели обоих DP-RAG на OLMo-2-7B-Instruct
+
+
+ЦЕЛЬ
+    Перевести оба DP-RAG-пайплайна (Koga и Grislain) с их дефолтных моделей
+    на одну общую модель-генератор: allenai/OLMo-2-1124-7B-Instruct.
+    Единая модель для обоих пайплайнов ведет к честному сравнению privacy-utility
+    (контролируем переменную "генератор", различается только DP-механизм).
+
+ПОЧЕМУ OLMo-2-7B-Instruct, а не Pythia-6.9b
+    Главный путь Grislain (dp_chat / dp_summary в dp_model.py) использует
+    tokenizer.apply_chat_template(...) с ролями system/user. Это требует
+    instruct-модели с chat-шаблоном.
+      - Pythia-6.9b — base-модель без chat-шаблона, поэтому apply_chat_template все упало,
+        пришлось бы переписывать Grislain на ручное форматирование промптов.
+      - OLMo-2-1124-7B-Instruct — instruct-модель с chat-шаблоном и
+        чистый drop-in для обоих пайплайнов на одном масштабе (~7B).
+
+
+
+ЧТО НАМЕРЕННО НЕ ТРОНУТО:
+    - baselines/grislain/data.py:17 — Model("meta-llama/Llama-3.2-3B-Instruct"):
+        это модель генерации синтетических документов (Dirichlet/medical),
+        а не генератор ответов DP-RAG.
+    - baselines/grislain/pup_vector_store.py — Snowflake/snowflake-arctic-embed-*:
+        это эмбеддер ретривера, а не LLM-генератор. 
+    - Закомментированные строки с Phi-3.5 (koga/utils/model.py:72,
+        grislain/data.py:19) — неактивны, оставлены как есть.
+
+================================================================================

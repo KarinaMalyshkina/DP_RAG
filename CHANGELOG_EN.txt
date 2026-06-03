@@ -1,0 +1,78 @@
+
+DP-RAG-EVAL — CHANGELOG
+
+2026-06-01:
+
+1) In-framework dataset loading + 4 controlled corpus variants
+
+
+GOAL
+    Implement loading of a public corpus into the framework and prepare 4
+    controlled versions to study the "duplication <-> DP degradation" link:
+      (i)   original         — all documents unique (control);
+      (ii)  full_duplicate   — a subset of documents repeated verbatim;
+      (iii) partial_overlap  — documents share a common sentence/paragraph;
+      (iv)  canary           — unique secrets inserted (targets for extraction attacks).
+
+CORPUS CHOICE:
+    Loaded the HealthCareMagic-100k dataset (RafaelMPereira/HealthCareMagic-100k-Chat-Format-en).
+    A document is built from a single doctor's answer; the patient question is kept in metadata["query"].
+    Why not Natural Questions after all: the NQ corpus consists of the whole of Wikipedia, which is very heavy to download locally.
+    HCM format: a single text field = "<human>: question\n<bot>: answer", parsed on "<bot>:".
+
+WHAT WAS ADDED:
+    dp_rag_eval/core/types.py
+        - Document(id, text, metadata) + to_dict/from_dict/copy.
+    dp_rag_eval/core/protocols.py
+        - DatasetLoader, DatasetVariant.
+    dp_rag_eval/core/__init__.py — exports.
+    dp_rag_eval/datasets/loaders.py
+        - HealthCareMagicLoader: load() -> list[Document]; subsampling (n_docs) with
+          seeded shuffling; malformed examples skipped with a log line.
+    dp_rag_eval/datasets/variants.py
+        - OriginalVariant.
+        - FullDuplicateVariant(duplication_rate, n_copies, seed): verbatim copies with
+          new ids; provenance is_duplicate/duplicate_of/copy_index.
+        - PartialOverlapVariant(overlap_rate, n_hosts, seed): the longest sentence is
+          taken from a donor document and inserted into n_hosts others;
+          provenance shared_fragment_from / shared_fragment.
+        - CanaryInjectionVariant(n_canaries, n_repeats, secret_length, alphabet, seed):
+          secret "CONFIDENTIAL PATIENT NOTE: ... is <code>"; n_repeats = into how many
+          documents the SAME secret is inserted (to study secret duplication).
+    scripts/prepare_dataset.py
+        - loads the base corpus, builds all 4 variants, writes to data/variants/:
+          original.jsonl, full_duplicate.jsonl, partial_overlap.jsonl, canary.jsonl,
+          canary_ground_truth.json, summary.json.
+
+
+
+2) Switched the generator model of both DP-RAGs to OLMo-2-7B-Instruct
+
+
+GOAL
+    Move both DP-RAG pipelines (Koga and Grislain) off their default models onto
+    a single shared generator model: allenai/OLMo-2-1124-7B-Instruct.
+    One model for both pipelines leads to a fair privacy-utility comparison
+    (we hold the "generator" variable constant; only the DP mechanism differs).
+
+WHY OLMo-2-7B-Instruct AND NOT Pythia-6.9b
+    Grislain's main path (dp_chat / dp_summary in dp_model.py) uses
+    tokenizer.apply_chat_template(...) with system/user roles. This requires an
+    instruct model with a chat template.
+      - Pythia-6.9b — a base model without a chat template, so apply_chat_template fell over;
+        Grislain would have to be rewritten to manual prompt formatting.
+      - OLMo-2-1124-7B-Instruct — an instruct model with a chat template and
+        a clean drop-in for both pipelines at the same scale (~7B).
+
+
+
+WHAT WAS DELIBERATELY LEFT UNTOUCHED:
+    - baselines/grislain/data.py:17 — Model("meta-llama/Llama-3.2-3B-Instruct"):
+        this is the synthetic-document generator model (Dirichlet/medical),
+        not the DP-RAG answer generator.
+    - baselines/grislain/pup_vector_store.py — Snowflake/snowflake-arctic-embed-*:
+        this is the retriever embedder, not the LLM generator.
+    - Commented-out Phi-3.5 lines (koga/utils/model.py:72,
+        grislain/data.py:19) — inert, left as-is.
+
+================================================================================
