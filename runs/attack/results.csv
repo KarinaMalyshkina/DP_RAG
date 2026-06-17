@@ -1,0 +1,9 @@
+pipeline,variant,status,auc,accuracy,tpr,fpr,n_members,n_non_members,seconds
+koga,original,OK,0.78125,0.5625,0.25,0.125,8.0,8.0,516.4201021000044
+grislain,original,OK,0.734375,0.625,0.625,0.375,8.0,8.0,1244.4715228000423
+koga,full_duplicate,OK,0.953125,0.75,0.625,0.125,8.0,8.0,700.3609265000559
+grislain,full_duplicate,OK,0.78125,0.6875,0.75,0.375,8.0,8.0,1140.5610699000536
+koga,partial_overlap,OK,0.875,0.6875,0.375,0.0,8.0,8.0,719.1989710000344
+grislain,partial_overlap,OK,0.828125,0.6875,0.75,0.375,8.0,8.0,1537.5869402999524
+koga,canary,OK,0.84375,0.5625,0.125,0.0,8.0,8.0,589.4297793000005
+grislain,canary,OK,0.71875,0.625,0.75,0.5,8.0,8.0,1541.6469347999664

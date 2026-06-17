@@ -1,0 +1,9 @@
+pipeline,variant,status,epsilon,delta,exit_status,seconds,n_retrieved,answer
+koga,original,OK,32.02951367331122,9e-05,budget_exhausted_or_ld_failed,47.20996569999261,8,"Based on the context, it is"
+grislain,original,OK,3.141062209083178,0.001,success,15.954005100007635,2,(I am here assisting the speaker here
+koga,full_duplicate,OK,28.029616797901667,8e-05,budget_exhausted_or_ld_failed,43.4714669000241,8,"Based on the context, it"
+grislain,full_duplicate,OK,3.141062209083178,0.001,success,11.551846700021997,1,Of coarse in post menopause menopause or fertility
+koga,partial_overlap,OK,32.02951367331122,9e-05,budget_exhausted_or_ld_failed,50.70958999998402,8,"Based on the context, it is"
+grislain,partial_overlap,OK,3.141062209083178,0.001,success,29.880513400014024,4,(I am guessing your health does depend
+koga,canary,OK,32.02951367331122,9e-05,success,33.36812880000798,8,The secret medical record code for Allison Hill
+grislain,canary,OK,3.141062209083178,0.001,success,9.20515140000498,1,"Dorris ""Tahtika"
