@@ -76,3 +76,89 @@ DP-RAG-EVAL — ЖУРНАЛ ИЗМЕНЕНИЙ (changelog)
         grislain/data.py:19) — неактивны, оставлены как есть.
 
 ================================================================================
+
+2026-07-02:
+
+3) Бейзлайн на обычном RAG без DP (epsilon = бесконечность) + метрика TPR@FPR=0.01
+
+
+ЦЕЛЬ
+    Установить верхнюю границу успеха атаки — на plain RAG без какого-либо DP-шума
+    (epsilon = ∞). Это потолок, с которым сравниваются Koga и Grislain:
+    если метрики атаки на DP-RAG приближаются к наивному бейзлайну, DP-механизм
+    не даёт реальной защиты.
+
+
+ЧТО ДОБАВЛЕНО:
+    dp_rag_eval/pipelines/naive_pipeline.py
+        - NaivePipeline: обычный dense retrieval (cosine top-k) + жадная HF-генерация,
+          без DP-механизма, epsilon возвращается как float("inf").
+        - yes_no_logit_score(): gray-box скор — P('Yes') из логитов первого токена;
+          максимальная утечка, доступная атакующему с доступом к логитам.
+        - Разделяет предзагруженные веса generator/tokenizer/embedder с Koga и Grislain,
+          все три пайплайна работают на одних и тех же весах модели.
+    dp_rag_eval/attacks/membership.py
+        - Добавлена функция tpr_at_fpr(labels, scores, target_fpr=0.01).
+        - tpr_at_fpr_01 теперь включён в каждый AttackResult.metrics.
+        - Вычисление AUC не изменилось (критерий Манна-Уитни).
+    dp_rag_eval/pipelines/__init__.py
+        - NaivePipeline добавлен в __all__.
+    scripts/run_attack.py
+        - "naive" добавлен в ALL_PIPELINES; строится рядом с Koga/Grislain.
+        - tpr_at_fpr_01 добавлен в Markdown-таблицу отчёта и CSV.
+        - Checkpoint-логика: завершённые ячейки (pipeline, variant) пропускаются при перезапуске.
+        - Флаг --mode: gray_box (по умолчанию, непрерывный P(Yes)) или
+          black_box (парсинг текста Yes/No).
+
+
+РЕЗУЛЬТАТЫ
+
+    А) runs/attack_naive/ — только naive, все 4 варианта корпуса
+       (40 members в индексе, 10 targets/class, Qwen2.5-0.5B-Instruct, gray_box, CPU, seed=42)
+
+        вариант          AUC     TPR@FPR=0.01
+        original         0.710   0.20
+        full_duplicate   0.755   0.30
+        partial_overlap  0.645   0.00
+        canary           0.675   0.10
+
+       Интерпретация: AUC наивного RAG в диапазоне 0.65–0.76 — это референсный потолок.
+       Дублирование (full_duplicate) поднимает AUC и TPR — перекрывающийся контент
+       делает членов корпуса более различимыми от нечленов даже без DP.
+
+    Б) runs/attack_fair/ — naive vs koga vs grislain, 2 варианта
+       (60 members, 5 targets/class, gray_box, CPU, seed=42)
+
+        pipeline    вариант          AUC    TPR@FPR=0.01
+        naive       original         0.72   0.20
+        koga        original         0.52   0.20
+        grislain    original         0.84   0.60
+        naive       full_duplicate   0.62   0.20
+        koga        full_duplicate   0.52   0.20
+        grislain    full_duplicate   0.60   0.20
+
+       Koga при epsilon~500 (target_eps ещё не исправлен) приближается к случайному
+       угадыванию (AUC=0.52) — это следствие чрезмерно высокого шума, а не сильной
+       приватности. Grislain при epsilon=3 превышает наивный бейзлайн на original/gray_box —
+       известный артефакт: DPLogitsAggregator утекает сигнал о членстве через веса
+       агрегации логитов, при n=5 дисперсия высокая. Результаты носят иллюстративный характер.
+
+
+ИЗВЕСТНЫЕ ПРОБЛЕМЫ / ОТКРЫТЫЕ ВОПРОСЫ:
+    - Epsilon у Koga не зафиксирован: target_eps=500.0, target_delta=1e-2 —
+      фактически epsilon=∞, а не реальная DP-настройка. Должен быть
+      выровнен с Grislain перед любым осмысленным сравнением DP vs naive.
+    - Grislain delta=1e-3; при N=40 членах 1/N=0.025, то есть delta ниже 1/N,
+      но лишь незначительно. Стандарт тезиса требует delta << 1/N^2 ~ 6e-4.
+    - Gray_box скор Koga обходит DP-Gumbel шум (усредняет сырые логиты voter'ов) —
+      это adversarial upper bound, а не реальное DP-распределение выхода.
+    - Размеры выборок (5–10 targets/class) слишком малы для устойчивых оценок
+      AUC/TPR; для исследовательских цифр нужен GPU с >= 50 targets/class.
+
+СЛЕДУЮЩИЕ ШАГИ:
+    - Зафиксировать epsilon=3.0, delta=1e-5 для Koga и Grislain (добавить аргументы
+      --epsilon/--delta в run_attack.py, пробросить в конструкторы пайплайнов).
+    - Реализовать EmbeddingSimilarityAttack (retrieval-side MIA, без LLM):
+      скор = max cosine similarity между embedding целевого документа и индексом.
+    - Перезапустить на GPU с >= 50 targets/class для стабильных метрик.
+

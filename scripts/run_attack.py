@@ -42,12 +42,12 @@ from dp_rag_eval.datasets.variants import (
     OriginalVariant,
     PartialOverlapVariant,
 )
-from dp_rag_eval.pipelines import Embedder, GrislainPipeline, KogaPipeline, load_generator, resolve_device
+from dp_rag_eval.pipelines import Embedder, GrislainPipeline, KogaPipeline, NaivePipeline, load_generator, resolve_device
 
 logger = logging.getLogger("run_attack")
 
 ALL_VARIANTS = ["original", "full_duplicate", "partial_overlap", "canary"]
-ALL_PIPELINES = ["koga", "grislain"]
+ALL_PIPELINES = ["naive", "koga", "grislain"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,6 +100,14 @@ def build_pipelines(names: list[str], args: argparse.Namespace, device: str) -> 
     generator, tokenizer = load_generator(args.generator, device)
     embedder = Embedder(args.embedder, device)
     pipelines: dict[str, Any] = {}
+    if "naive" in names:
+        pipelines["naive"] = NaivePipeline(
+            generator,
+            tokenizer,
+            embedder,
+            max_new_tokens=args.max_new_tokens,
+            device=device,
+        )
     if "koga" in names:
         pipelines["koga"] = KogaPipeline(
             generator,
@@ -133,8 +141,15 @@ def render_markdown(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str:
     lines.append("")
     lines.append("AUC 0.5 = no better than chance; higher = membership leaks. Each row = one (pipeline, variant).")
     lines.append("")
-    lines.append("| pipeline | variant | status | AUC | accuracy | TPR | FPR | secs |")
-    lines.append("|---|---|---|---|---|---|---|---|")
+    lines.append(
+        "**Caveat (gray_box mode):** `grislain` applies `DPLogitsAggregator` before scoring — "
+        "the score reflects the actual DP output distribution. `koga` averages raw voter logits "
+        "before DP-Gumbel noise — the score is an adversarial upper bound, not the DP-protected output. "
+        "`naive` has no DP and serves as the epsilon=inf baseline."
+    )
+    lines.append("")
+    lines.append("| pipeline | variant | status | AUC | TPR@FPR=0.01 | accuracy | TPR | FPR | secs |")
+    lines.append("|---|---|---|---|---|---|---|---|---|")
     for r in rows:
 
         def fmt(key: str) -> str:
@@ -143,7 +158,7 @@ def render_markdown(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str:
 
         lines.append(
             f"| {r['pipeline']} | {r['variant']} | {r['status']} | {fmt('auc')} | "
-            f"{fmt('accuracy')} | {fmt('tpr')} | {fmt('fpr')} | {r['seconds']:.1f} |"
+            f"{fmt('tpr_at_fpr_01')} | {fmt('accuracy')} | {fmt('tpr')} | {fmt('fpr')} | {r['seconds']:.1f} |"
         )
     lines.append("")
     lines.append(
@@ -182,16 +197,54 @@ def main() -> None:
     rng.shuffle(targets)
     logger.info("Targets: %d members + %d non-members", len(member_targets), len(non_member_targets))
 
-    pipelines = build_pipelines(pipeline_names, args, device)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "attack": "Anderson et al. 2024 (arXiv:2405.20446) MIA",
+        "mode": args.mode,
+        "generator": args.generator,
+        "embedder": args.embedder,
+        "device": device,
+        "members": args.members,
+        "non_members": args.non_members,
+        "targets_per_class": args.targets_per_class,
+        "seed": args.seed,
+    }
 
+    # Load checkpoint: skip (pipeline, variant) cells already completed in a prior run.
+    checkpoint_path = args.output_dir / "results.json"
     rows: list[dict[str, Any]] = []
     detail: dict[str, Any] = {}
+    done: set[tuple[str, str]] = set()
+    if checkpoint_path.exists():
+        try:
+            saved = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            rows = saved.get("results", [])
+            detail = saved.get("predictions", {})
+            done = {(r["pipeline"], r["variant"]) for r in rows}
+            logger.info("Checkpoint: %d cells already done — skipping %s", len(done), sorted(done))
+        except Exception:
+            logger.warning("Could not read checkpoint; starting fresh")
+
+    def _save() -> None:
+        """Atomically write current results so a mid-run kill loses at most one cell."""
+        tmp = checkpoint_path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"meta": meta, "results": rows, "predictions": detail}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp.replace(checkpoint_path)
+
+    pipelines = build_pipelines(pipeline_names, args, device)
+
     for variant in variant_names:
         indexed_corpus = make_variant(variant, args.seed).apply(members_base)
         logger.info(
             "[%s] indexed corpus: %d documents (from %d members)", variant, len(indexed_corpus), len(members_base)
         )
         for name in pipeline_names:
+            if (name, variant) in done:
+                logger.info("Skipping %s/%s (already in checkpoint)", name, variant)
+                continue
             pipe = pipelines[name]
             logger.info("Attacking %s on %s ...", name, variant)
             start = time.perf_counter()
@@ -208,19 +261,10 @@ def main() -> None:
                 logger.error("FAILED %s/%s: %s\n%s", name, variant, exc, traceback.format_exc())
             record["seconds"] = time.perf_counter() - start
             rows.append(record)
+            done.add((name, variant))
+            _save()
+            logger.info("Checkpoint saved (%d/%d cells done)", len(done), len(pipeline_names) * len(variant_names))
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    meta = {
-        "attack": "Anderson et al. 2024 (arXiv:2405.20446) MIA",
-        "mode": args.mode,
-        "generator": args.generator,
-        "embedder": args.embedder,
-        "device": device,
-        "members": args.members,
-        "non_members": args.non_members,
-        "targets_per_class": args.targets_per_class,
-        "seed": args.seed,
-    }
     (args.output_dir / "results.json").write_text(
         json.dumps({"meta": meta, "results": rows, "predictions": detail}, indent=2, ensure_ascii=False),
         encoding="utf-8",
@@ -230,6 +274,7 @@ def main() -> None:
         "variant",
         "status",
         "auc",
+        "tpr_at_fpr_01",
         "accuracy",
         "tpr",
         "fpr",

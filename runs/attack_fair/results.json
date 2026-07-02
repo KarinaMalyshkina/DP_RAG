@@ -1,0 +1,563 @@
+{
+  "meta": {
+    "attack": "Anderson et al. 2024 (arXiv:2405.20446) MIA",
+    "mode": "gray_box",
+    "generator": "Qwen/Qwen2.5-0.5B-Instruct",
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "device": "cpu",
+    "members": 60,
+    "non_members": 60,
+    "targets_per_class": 5,
+    "seed": 42
+  },
+  "results": [
+    {
+      "pipeline": "naive",
+      "variant": "original",
+      "status": "OK",
+      "error": "",
+      "auc": 0.72,
+      "tpr_at_fpr_01": 0.2,
+      "n_members": 5.0,
+      "n_non_members": 5.0,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "tpr": 1.0,
+      "fpr": 1.0,
+      "tp": 5.0,
+      "fp": 5.0,
+      "tn": 0.0,
+      "fn": 0.0,
+      "seconds": 242.9144154000096
+    },
+    {
+      "pipeline": "koga",
+      "variant": "original",
+      "status": "OK",
+      "error": "",
+      "auc": 0.52,
+      "tpr_at_fpr_01": 0.2,
+      "n_members": 5.0,
+      "n_non_members": 5.0,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "tpr": 1.0,
+      "fpr": 1.0,
+      "tp": 5.0,
+      "fp": 5.0,
+      "tn": 0.0,
+      "fn": 0.0,
+      "seconds": 717.7114373000804
+    },
+    {
+      "pipeline": "grislain",
+      "variant": "original",
+      "status": "OK",
+      "error": "",
+      "auc": 0.84,
+      "tpr_at_fpr_01": 0.6,
+      "n_members": 5.0,
+      "n_non_members": 5.0,
+      "accuracy": 0.7,
+      "precision": 0.6666666666666666,
+      "tpr": 0.8,
+      "fpr": 0.4,
+      "tp": 4.0,
+      "fp": 2.0,
+      "tn": 3.0,
+      "fn": 1.0,
+      "seconds": 673.000170599902
+    },
+    {
+      "pipeline": "naive",
+      "variant": "full_duplicate",
+      "status": "OK",
+      "error": "",
+      "auc": 0.62,
+      "tpr_at_fpr_01": 0.2,
+      "n_members": 5.0,
+      "n_non_members": 5.0,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "tpr": 1.0,
+      "fpr": 1.0,
+      "tp": 5.0,
+      "fp": 5.0,
+      "tn": 0.0,
+      "fn": 0.0,
+      "seconds": 254.1978585999459
+    },
+    {
+      "pipeline": "koga",
+      "variant": "full_duplicate",
+      "status": "OK",
+      "error": "",
+      "auc": 0.52,
+      "tpr_at_fpr_01": 0.2,
+      "n_members": 5.0,
+      "n_non_members": 5.0,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "tpr": 1.0,
+      "fpr": 1.0,
+      "tp": 5.0,
+      "fp": 5.0,
+      "tn": 0.0,
+      "fn": 0.0,
+      "seconds": 714.2247635000385
+    },
+    {
+      "pipeline": "grislain",
+      "variant": "full_duplicate",
+      "status": "OK",
+      "error": "",
+      "auc": 0.6,
+      "tpr_at_fpr_01": 0.2,
+      "n_members": 5.0,
+      "n_non_members": 5.0,
+      "accuracy": 0.6,
+      "precision": 0.5555555555555556,
+      "tpr": 1.0,
+      "fpr": 0.8,
+      "tp": 5.0,
+      "fp": 4.0,
+      "tn": 1.0,
+      "fn": 0.0,
+      "seconds": 706.3928675001953
+    }
+  ],
+  "predictions": {
+    "naive/original": [
+      {
+        "doc_id": "hcm-000047",
+        "is_member": true,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000075",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.5926665999540697,
+        "predicted_member": true,
+        "response": "P(yes)=0.593"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": true,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.96036116089903,
+        "predicted_member": true,
+        "response": "P(yes)=0.960"
+      },
+      {
+        "doc_id": "hcm-000107",
+        "is_member": false,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      }
+    ],
+    "koga/original": [
+      {
+        "doc_id": "hcm-000047",
+        "is_member": true,
+        "score": 0.6016111181262738,
+        "predicted_member": true,
+        "response": "P(yes)=0.602"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.7730609281721184,
+        "predicted_member": true,
+        "response": "P(yes)=0.773"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.7404787631345253,
+        "predicted_member": true,
+        "response": "P(yes)=0.740"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.7090171264029994,
+        "predicted_member": true,
+        "response": "P(yes)=0.709"
+      },
+      {
+        "doc_id": "hcm-000075",
+        "is_member": false,
+        "score": 0.6388260962610712,
+        "predicted_member": true,
+        "response": "P(yes)=0.639"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.5548050931343297,
+        "predicted_member": true,
+        "response": "P(yes)=0.555"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": true,
+        "score": 0.630265693437018,
+        "predicted_member": true,
+        "response": "P(yes)=0.630"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.7895075394437002,
+        "predicted_member": true,
+        "response": "P(yes)=0.790"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.9065957287453419,
+        "predicted_member": true,
+        "response": "P(yes)=0.907"
+      },
+      {
+        "doc_id": "hcm-000107",
+        "is_member": false,
+        "score": 0.8390868968541543,
+        "predicted_member": true,
+        "response": "P(yes)=0.839"
+      }
+    ],
+    "grislain/original": [
+      {
+        "doc_id": "hcm-000047",
+        "is_member": true,
+        "score": 0.7240572596368613,
+        "predicted_member": true,
+        "response": "P(yes)=0.724"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.9549701849719238,
+        "predicted_member": true,
+        "response": "P(yes)=0.955"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.9888289187053685,
+        "predicted_member": true,
+        "response": "P(yes)=0.989"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.0,
+        "predicted_member": false,
+        "response": "P(yes)=0.000"
+      },
+      {
+        "doc_id": "hcm-000075",
+        "is_member": false,
+        "score": 0.0917353954865781,
+        "predicted_member": false,
+        "response": "P(yes)=0.092"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.0,
+        "predicted_member": false,
+        "response": "P(yes)=0.000"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": true,
+        "score": 0.34751732353589876,
+        "predicted_member": false,
+        "response": "P(yes)=0.348"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.9165269843689577,
+        "predicted_member": true,
+        "response": "P(yes)=0.917"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.9936063846764456,
+        "predicted_member": true,
+        "response": "P(yes)=0.994"
+      },
+      {
+        "doc_id": "hcm-000107",
+        "is_member": false,
+        "score": 0.9489759735425941,
+        "predicted_member": true,
+        "response": "P(yes)=0.949"
+      }
+    ],
+    "naive/full_duplicate": [
+      {
+        "doc_id": "hcm-000047",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000075",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.5926665999540697,
+        "predicted_member": true,
+        "response": "P(yes)=0.593"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": true,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.8519528019683106,
+        "predicted_member": true,
+        "response": "P(yes)=0.852"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.9579122720843811,
+        "predicted_member": true,
+        "response": "P(yes)=0.958"
+      },
+      {
+        "doc_id": "hcm-000107",
+        "is_member": false,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      }
+    ],
+    "koga/full_duplicate": [
+      {
+        "doc_id": "hcm-000047",
+        "is_member": true,
+        "score": 0.6515164666418145,
+        "predicted_member": true,
+        "response": "P(yes)=0.652"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.7911273731474051,
+        "predicted_member": true,
+        "response": "P(yes)=0.791"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.7910419532479411,
+        "predicted_member": true,
+        "response": "P(yes)=0.791"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.6729807625979349,
+        "predicted_member": true,
+        "response": "P(yes)=0.673"
+      },
+      {
+        "doc_id": "hcm-000075",
+        "is_member": false,
+        "score": 0.6537021060815998,
+        "predicted_member": true,
+        "response": "P(yes)=0.654"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.5827682948210637,
+        "predicted_member": true,
+        "response": "P(yes)=0.583"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": true,
+        "score": 0.5997857221864772,
+        "predicted_member": true,
+        "response": "P(yes)=0.600"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.8264954547392704,
+        "predicted_member": true,
+        "response": "P(yes)=0.826"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.9202050749331935,
+        "predicted_member": true,
+        "response": "P(yes)=0.920"
+      },
+      {
+        "doc_id": "hcm-000107",
+        "is_member": false,
+        "score": 0.8423711026356766,
+        "predicted_member": true,
+        "response": "P(yes)=0.842"
+      }
+    ],
+    "grislain/full_duplicate": [
+      {
+        "doc_id": "hcm-000047",
+        "is_member": true,
+        "score": 0.6288882442435726,
+        "predicted_member": true,
+        "response": "P(yes)=0.629"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.9096246471802129,
+        "predicted_member": true,
+        "response": "P(yes)=0.910"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.6731792021565535,
+        "predicted_member": true,
+        "response": "P(yes)=0.673"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.9890078138286444,
+        "predicted_member": true,
+        "response": "P(yes)=0.989"
+      },
+      {
+        "doc_id": "hcm-000075",
+        "is_member": false,
+        "score": 0.3955526730326331,
+        "predicted_member": false,
+        "response": "P(yes)=0.396"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.6029417801725157,
+        "predicted_member": true,
+        "response": "P(yes)=0.603"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": true,
+        "score": 0.7802412881087587,
+        "predicted_member": true,
+        "response": "P(yes)=0.780"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.9863089239058476,
+        "predicted_member": true,
+        "response": "P(yes)=0.986"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.994699464800942,
+        "predicted_member": true,
+        "response": "P(yes)=0.995"
+      },
+      {
+        "doc_id": "hcm-000107",
+        "is_member": false,
+        "score": 0.7016447019429769,
+        "predicted_member": true,
+        "response": "P(yes)=0.702"
+      }
+    ]
+  }
+}

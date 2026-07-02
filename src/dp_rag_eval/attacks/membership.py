@@ -74,6 +74,31 @@ def roc_auc(labels: list[int], scores: list[float]) -> float:
     return wins / (len(positives) * len(negatives))
 
 
+def tpr_at_fpr(labels: list[int], scores: list[float], target_fpr: float = 0.01) -> float:
+    """TPR at the lowest threshold where FPR <= target_fpr.
+
+    Sweeps score thresholds from highest to lowest. At each threshold the
+    decision rule is: predict member if score >= threshold. Returns the TPR
+    at the first threshold where FPR falls at or below ``target_fpr``. If no
+    such threshold exists (attacker must accept FPR > target_fpr to catch any
+    member), returns 0.0.
+    """
+    positives = [s for label, s in zip(labels, scores) if label == 1]
+    negatives = [s for label, s in zip(labels, scores) if label == 0]
+    if not positives or not negatives:
+        return float("nan")
+    thresholds = sorted(set(scores), reverse=True)
+    best_tpr = 0.0
+    for thresh in thresholds:
+        tp = sum(1 for s in positives if s >= thresh)
+        fp = sum(1 for s in negatives if s >= thresh)
+        fpr = fp / len(negatives)
+        tpr = tp / len(positives)
+        if fpr <= target_fpr:
+            best_tpr = tpr
+    return best_tpr
+
+
 def _binary_metrics(labels: list[int], scores: list[float], threshold: float = 0.5) -> dict[str, float]:
     """Confusion-matrix metrics for predictions thresholded at ``threshold``."""
     tp = fp = tn = fn = 0
@@ -163,6 +188,7 @@ class RAGMembershipInferenceAttack:
 
         metrics = {
             "auc": roc_auc(labels, scores),
+            "tpr_at_fpr_01": tpr_at_fpr(labels, scores, target_fpr=0.01),
             "n_members": float(sum(labels)),
             "n_non_members": float(len(labels) - sum(labels)),
             **_binary_metrics(labels, scores),

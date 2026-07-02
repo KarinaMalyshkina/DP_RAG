@@ -1,0 +1,5 @@
+pipeline,variant,status,auc,tpr_at_fpr_01,accuracy,tpr,fpr,n_members,n_non_members,seconds
+naive,original,OK,0.71,0.2,0.55,0.9,0.8,10.0,10.0,527.2188002998009
+naive,full_duplicate,OK,0.755,0.3,0.6,1.0,0.8,10.0,10.0,548.0275967000052
+naive,partial_overlap,OK,0.645,0.0,0.55,0.9,0.8,10.0,10.0,775.5910410999786
+naive,canary,OK,0.675,0.1,0.6,0.9,0.7,10.0,10.0,591.6307471999899

@@ -1,0 +1,7 @@
+pipeline,variant,status,auc,tpr_at_fpr_01,accuracy,tpr,fpr,n_members,n_non_members,seconds
+naive,original,OK,0.72,0.2,0.5,1.0,1.0,5.0,5.0,242.9144154000096
+koga,original,OK,0.52,0.2,0.5,1.0,1.0,5.0,5.0,717.7114373000804
+grislain,original,OK,0.84,0.6,0.7,0.8,0.4,5.0,5.0,673.000170599902
+naive,full_duplicate,OK,0.62,0.2,0.5,1.0,1.0,5.0,5.0,254.1978585999459
+koga,full_duplicate,OK,0.52,0.2,0.5,1.0,1.0,5.0,5.0,714.2247635000385
+grislain,full_duplicate,OK,0.6,0.2,0.6,1.0,0.8,5.0,5.0,706.3928675001953

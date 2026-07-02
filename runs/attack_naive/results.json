@@ -1,0 +1,661 @@
+{
+  "meta": {
+    "attack": "Anderson et al. 2024 (arXiv:2405.20446) MIA",
+    "mode": "gray_box",
+    "generator": "Qwen/Qwen2.5-0.5B-Instruct",
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "device": "cpu",
+    "members": 40,
+    "non_members": 40,
+    "targets_per_class": 10,
+    "seed": 42
+  },
+  "results": [
+    {
+      "pipeline": "naive",
+      "variant": "original",
+      "status": "OK",
+      "error": "",
+      "auc": 0.71,
+      "tpr_at_fpr_01": 0.2,
+      "n_members": 10.0,
+      "n_non_members": 10.0,
+      "accuracy": 0.55,
+      "precision": 0.5294117647058824,
+      "tpr": 0.9,
+      "fpr": 0.8,
+      "tp": 9.0,
+      "fp": 8.0,
+      "tn": 2.0,
+      "fn": 1.0,
+      "seconds": 527.2188002998009
+    },
+    {
+      "pipeline": "naive",
+      "variant": "full_duplicate",
+      "status": "OK",
+      "error": "",
+      "auc": 0.755,
+      "tpr_at_fpr_01": 0.3,
+      "n_members": 10.0,
+      "n_non_members": 10.0,
+      "accuracy": 0.6,
+      "precision": 0.5555555555555556,
+      "tpr": 1.0,
+      "fpr": 0.8,
+      "tp": 10.0,
+      "fp": 8.0,
+      "tn": 2.0,
+      "fn": 0.0,
+      "seconds": 548.0275967000052
+    },
+    {
+      "pipeline": "naive",
+      "variant": "partial_overlap",
+      "status": "OK",
+      "error": "",
+      "auc": 0.645,
+      "tpr_at_fpr_01": 0.0,
+      "n_members": 10.0,
+      "n_non_members": 10.0,
+      "accuracy": 0.55,
+      "precision": 0.5294117647058824,
+      "tpr": 0.9,
+      "fpr": 0.8,
+      "tp": 9.0,
+      "fp": 8.0,
+      "tn": 2.0,
+      "fn": 1.0,
+      "seconds": 775.5910410999786
+    },
+    {
+      "pipeline": "naive",
+      "variant": "canary",
+      "status": "OK",
+      "error": "",
+      "auc": 0.675,
+      "tpr_at_fpr_01": 0.1,
+      "n_members": 10.0,
+      "n_non_members": 10.0,
+      "accuracy": 0.6,
+      "precision": 0.5625,
+      "tpr": 0.9,
+      "fpr": 0.7,
+      "tp": 9.0,
+      "fp": 7.0,
+      "tn": 3.0,
+      "fn": 1.0,
+      "seconds": 591.6307471999899
+    }
+  ],
+  "predictions": {
+    "naive/original": [
+      {
+        "doc_id": "hcm-000045",
+        "is_member": false,
+        "score": 0.4073334000459302,
+        "predicted_member": false,
+        "response": "P(yes)=0.407"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.8807970779778823,
+        "predicted_member": true,
+        "response": "P(yes)=0.881"
+      },
+      {
+        "doc_id": "hcm-000079",
+        "is_member": false,
+        "score": 0.8519528019683106,
+        "predicted_member": true,
+        "response": "P(yes)=0.852"
+      },
+      {
+        "doc_id": "hcm-000041",
+        "is_member": false,
+        "score": 0.5621765008857981,
+        "predicted_member": true,
+        "response": "P(yes)=0.562"
+      },
+      {
+        "doc_id": "hcm-000053",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.005911068856243796,
+        "predicted_member": false,
+        "response": "P(yes)=0.006"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.8354835371034369,
+        "predicted_member": true,
+        "response": "P(yes)=0.835"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.46879062662624377,
+        "predicted_member": false,
+        "response": "P(yes)=0.469"
+      },
+      {
+        "doc_id": "hcm-000072",
+        "is_member": false,
+        "score": 0.5621765008857981,
+        "predicted_member": true,
+        "response": "P(yes)=0.562"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.9241418199787566,
+        "predicted_member": true,
+        "response": "P(yes)=0.924"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000076",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      }
+    ],
+    "naive/full_duplicate": [
+      {
+        "doc_id": "hcm-000045",
+        "is_member": false,
+        "score": 0.4073334000459302,
+        "predicted_member": false,
+        "response": "P(yes)=0.407"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.8933094060543487,
+        "predicted_member": true,
+        "response": "P(yes)=0.893"
+      },
+      {
+        "doc_id": "hcm-000079",
+        "is_member": false,
+        "score": 0.8519528019683106,
+        "predicted_member": true,
+        "response": "P(yes)=0.852"
+      },
+      {
+        "doc_id": "hcm-000041",
+        "is_member": false,
+        "score": 0.5,
+        "predicted_member": true,
+        "response": "P(yes)=0.500"
+      },
+      {
+        "doc_id": "hcm-000053",
+        "is_member": false,
+        "score": 0.6224593312018546,
+        "predicted_member": true,
+        "response": "P(yes)=0.622"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.005554924703691103,
+        "predicted_member": false,
+        "response": "P(yes)=0.006"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.8670357598021706,
+        "predicted_member": true,
+        "response": "P(yes)=0.867"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.6224593312018546,
+        "predicted_member": true,
+        "response": "P(yes)=0.622"
+      },
+      {
+        "doc_id": "hcm-000072",
+        "is_member": false,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.6513548646660542,
+        "predicted_member": true,
+        "response": "P(yes)=0.651"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.9046505351008906,
+        "predicted_member": true,
+        "response": "P(yes)=0.905"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000076",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      }
+    ],
+    "naive/partial_overlap": [
+      {
+        "doc_id": "hcm-000045",
+        "is_member": false,
+        "score": 0.37754066879814546,
+        "predicted_member": false,
+        "response": "P(yes)=0.378"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.9149009549929797,
+        "predicted_member": true,
+        "response": "P(yes)=0.915"
+      },
+      {
+        "doc_id": "hcm-000079",
+        "is_member": false,
+        "score": 0.9149009549929797,
+        "predicted_member": true,
+        "response": "P(yes)=0.915"
+      },
+      {
+        "doc_id": "hcm-000041",
+        "is_member": false,
+        "score": 0.6513548646660542,
+        "predicted_member": true,
+        "response": "P(yes)=0.651"
+      },
+      {
+        "doc_id": "hcm-000053",
+        "is_member": false,
+        "score": 0.6224593312018546,
+        "predicted_member": true,
+        "response": "P(yes)=0.622"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.01590639171181471,
+        "predicted_member": false,
+        "response": "P(yes)=0.016"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.4378234991142019,
+        "predicted_member": false,
+        "response": "P(yes)=0.438"
+      },
+      {
+        "doc_id": "hcm-000072",
+        "is_member": false,
+        "score": 0.5621765008857981,
+        "predicted_member": true,
+        "response": "P(yes)=0.562"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.9149009549929797,
+        "predicted_member": true,
+        "response": "P(yes)=0.915"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000076",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      }
+    ],
+    "naive/canary": [
+      {
+        "doc_id": "hcm-000045",
+        "is_member": false,
+        "score": 0.4378234991142019,
+        "predicted_member": false,
+        "response": "P(yes)=0.438"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.9046505351008906,
+        "predicted_member": true,
+        "response": "P(yes)=0.905"
+      },
+      {
+        "doc_id": "hcm-000079",
+        "is_member": false,
+        "score": 0.9149009549929797,
+        "predicted_member": true,
+        "response": "P(yes)=0.915"
+      },
+      {
+        "doc_id": "hcm-000041",
+        "is_member": false,
+        "score": 0.4073334000459302,
+        "predicted_member": false,
+        "response": "P(yes)=0.407"
+      },
+      {
+        "doc_id": "hcm-000053",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.004609572179374208,
+        "predicted_member": false,
+        "response": "P(yes)=0.005"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.8354835371034369,
+        "predicted_member": true,
+        "response": "P(yes)=0.835"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.46879062662624377,
+        "predicted_member": false,
+        "response": "P(yes)=0.469"
+      },
+      {
+        "doc_id": "hcm-000072",
+        "is_member": false,
+        "score": 0.5621765008857981,
+        "predicted_member": true,
+        "response": "P(yes)=0.562"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.5926665999540697,
+        "predicted_member": true,
+        "response": "P(yes)=0.593"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.9241418199787566,
+        "predicted_member": true,
+        "response": "P(yes)=0.924"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.5926665999540697,
+        "predicted_member": true,
+        "response": "P(yes)=0.593"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000076",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      }
+    ]
+  }
+}
