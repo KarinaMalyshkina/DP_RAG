@@ -1,0 +1,1225 @@
+{
+  "meta": {
+    "attack": "Anderson et al. 2024 (arXiv:2405.20446) MIA",
+    "mode": "gray_box",
+    "generator": "Qwen/Qwen2.5-0.5B-Instruct",
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "device": "cpu",
+    "members": 40,
+    "non_members": 40,
+    "targets_per_class": 20,
+    "seed": 42
+  },
+  "results": [
+    {
+      "pipeline": "naive",
+      "variant": "original",
+      "status": "OK",
+      "error": "",
+      "auc": 0.58625,
+      "tpr_at_fpr_01": 0.05,
+      "tpr_at_fpr_05": 0.2,
+      "n_members": 20.0,
+      "n_non_members": 20.0,
+      "accuracy": 0.525,
+      "precision": 0.5135135135135135,
+      "tpr": 0.95,
+      "fpr": 0.9,
+      "tp": 19.0,
+      "fp": 18.0,
+      "tn": 2.0,
+      "fn": 1.0,
+      "seconds": 1662.686427900102
+    },
+    {
+      "pipeline": "grislain",
+      "variant": "original",
+      "status": "OK",
+      "error": "",
+      "auc": 0.4975,
+      "tpr_at_fpr_01": 0.1,
+      "tpr_at_fpr_05": 0.15,
+      "n_members": 20.0,
+      "n_non_members": 20.0,
+      "accuracy": 0.475,
+      "precision": 0.48484848484848486,
+      "tpr": 0.8,
+      "fpr": 0.85,
+      "tp": 16.0,
+      "fp": 17.0,
+      "tn": 3.0,
+      "fn": 4.0,
+      "seconds": 4026.2233703001402
+    },
+    {
+      "pipeline": "naive",
+      "variant": "full_duplicate",
+      "status": "OK",
+      "error": "",
+      "auc": 0.59375,
+      "tpr_at_fpr_01": 0.05,
+      "tpr_at_fpr_05": 0.2,
+      "n_members": 20.0,
+      "n_non_members": 20.0,
+      "accuracy": 0.525,
+      "precision": 0.5128205128205128,
+      "tpr": 1.0,
+      "fpr": 0.95,
+      "tp": 20.0,
+      "fp": 19.0,
+      "tn": 1.0,
+      "fn": 0.0,
+      "seconds": 1266.6003624997102
+    },
+    {
+      "pipeline": "grislain",
+      "variant": "full_duplicate",
+      "status": "OK",
+      "error": "",
+      "auc": 0.45,
+      "tpr_at_fpr_01": 0.05,
+      "tpr_at_fpr_05": 0.1,
+      "n_members": 20.0,
+      "n_non_members": 20.0,
+      "accuracy": 0.525,
+      "precision": 0.5151515151515151,
+      "tpr": 0.85,
+      "fpr": 0.8,
+      "tp": 17.0,
+      "fp": 16.0,
+      "tn": 4.0,
+      "fn": 3.0,
+      "seconds": 3515.087850500364
+    }
+  ],
+  "predictions": {
+    "naive/original": [
+      {
+        "doc_id": "hcm-000039",
+        "is_member": true,
+        "score": 0.8933094060543487,
+        "predicted_member": true,
+        "response": "P(yes)=0.893"
+      },
+      {
+        "doc_id": "hcm-000016",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000073",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.005911068856243796,
+        "predicted_member": false,
+        "response": "P(yes)=0.006"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000019",
+        "is_member": true,
+        "score": 0.679178699175393,
+        "predicted_member": true,
+        "response": "P(yes)=0.679"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000061",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000044",
+        "is_member": false,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": false,
+        "score": 0.8354835371034369,
+        "predicted_member": true,
+        "response": "P(yes)=0.835"
+      },
+      {
+        "doc_id": "hcm-000064",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000000",
+        "is_member": true,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000037",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.9241418199787566,
+        "predicted_member": true,
+        "response": "P(yes)=0.924"
+      },
+      {
+        "doc_id": "hcm-000033",
+        "is_member": true,
+        "score": 0.8519528019683106,
+        "predicted_member": true,
+        "response": "P(yes)=0.852"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.4378234991142019,
+        "predicted_member": false,
+        "response": "P(yes)=0.438"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000042",
+        "is_member": false,
+        "score": 0.8354835371034369,
+        "predicted_member": true,
+        "response": "P(yes)=0.835"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.46879062662624377,
+        "predicted_member": false,
+        "response": "P(yes)=0.469"
+      },
+      {
+        "doc_id": "hcm-000065",
+        "is_member": false,
+        "score": 0.8670357598021706,
+        "predicted_member": true,
+        "response": "P(yes)=0.867"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.8354835371034369,
+        "predicted_member": true,
+        "response": "P(yes)=0.835"
+      },
+      {
+        "doc_id": "hcm-000046",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000002",
+        "is_member": true,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000067",
+        "is_member": false,
+        "score": 0.8933094060543487,
+        "predicted_member": true,
+        "response": "P(yes)=0.893"
+      },
+      {
+        "doc_id": "hcm-000020",
+        "is_member": true,
+        "score": 0.8807970779778823,
+        "predicted_member": true,
+        "response": "P(yes)=0.881"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.6513548646660542,
+        "predicted_member": true,
+        "response": "P(yes)=0.651"
+      },
+      {
+        "doc_id": "hcm-000050",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000031",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000057",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.8807970779778823,
+        "predicted_member": true,
+        "response": "P(yes)=0.881"
+      },
+      {
+        "doc_id": "hcm-000043",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000048",
+        "is_member": false,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000029",
+        "is_member": true,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000051",
+        "is_member": false,
+        "score": 0.5,
+        "predicted_member": true,
+        "response": "P(yes)=0.500"
+      }
+    ],
+    "grislain/original": [
+      {
+        "doc_id": "hcm-000039",
+        "is_member": true,
+        "score": 0.9932153656064487,
+        "predicted_member": true,
+        "response": "P(yes)=0.993"
+      },
+      {
+        "doc_id": "hcm-000016",
+        "is_member": true,
+        "score": 0.9676732193917054,
+        "predicted_member": true,
+        "response": "P(yes)=0.968"
+      },
+      {
+        "doc_id": "hcm-000073",
+        "is_member": false,
+        "score": 0.8520183534725403,
+        "predicted_member": true,
+        "response": "P(yes)=0.852"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.5015624859731475,
+        "predicted_member": true,
+        "response": "P(yes)=0.502"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7198048869434717,
+        "predicted_member": true,
+        "response": "P(yes)=0.720"
+      },
+      {
+        "doc_id": "hcm-000019",
+        "is_member": true,
+        "score": 0.28443846121601046,
+        "predicted_member": false,
+        "response": "P(yes)=0.284"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.8530986729516505,
+        "predicted_member": true,
+        "response": "P(yes)=0.853"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.8112591693477532,
+        "predicted_member": true,
+        "response": "P(yes)=0.811"
+      },
+      {
+        "doc_id": "hcm-000061",
+        "is_member": false,
+        "score": 0.9741738185039097,
+        "predicted_member": true,
+        "response": "P(yes)=0.974"
+      },
+      {
+        "doc_id": "hcm-000044",
+        "is_member": false,
+        "score": 0.17679643186436675,
+        "predicted_member": false,
+        "response": "P(yes)=0.177"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": false,
+        "score": 0.9278804239202519,
+        "predicted_member": true,
+        "response": "P(yes)=0.928"
+      },
+      {
+        "doc_id": "hcm-000064",
+        "is_member": false,
+        "score": 0.6518024215465007,
+        "predicted_member": true,
+        "response": "P(yes)=0.652"
+      },
+      {
+        "doc_id": "hcm-000000",
+        "is_member": true,
+        "score": 0.8641778632330122,
+        "predicted_member": true,
+        "response": "P(yes)=0.864"
+      },
+      {
+        "doc_id": "hcm-000037",
+        "is_member": true,
+        "score": 0.968557186327039,
+        "predicted_member": true,
+        "response": "P(yes)=0.969"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.8020822634452114,
+        "predicted_member": true,
+        "response": "P(yes)=0.802"
+      },
+      {
+        "doc_id": "hcm-000033",
+        "is_member": true,
+        "score": 0.9919585559724472,
+        "predicted_member": true,
+        "response": "P(yes)=0.992"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.0400760134293356,
+        "predicted_member": false,
+        "response": "P(yes)=0.040"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7744298928618734,
+        "predicted_member": true,
+        "response": "P(yes)=0.774"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.7507561617254168,
+        "predicted_member": true,
+        "response": "P(yes)=0.751"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.8334202179907809,
+        "predicted_member": true,
+        "response": "P(yes)=0.833"
+      },
+      {
+        "doc_id": "hcm-000042",
+        "is_member": false,
+        "score": 0.6386212394277149,
+        "predicted_member": true,
+        "response": "P(yes)=0.639"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.9390078468008244,
+        "predicted_member": true,
+        "response": "P(yes)=0.939"
+      },
+      {
+        "doc_id": "hcm-000065",
+        "is_member": false,
+        "score": 0.9146226424055293,
+        "predicted_member": true,
+        "response": "P(yes)=0.915"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.9853436378748971,
+        "predicted_member": true,
+        "response": "P(yes)=0.985"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.6849885021515174,
+        "predicted_member": true,
+        "response": "P(yes)=0.685"
+      },
+      {
+        "doc_id": "hcm-000046",
+        "is_member": false,
+        "score": 0.9891964898767276,
+        "predicted_member": true,
+        "response": "P(yes)=0.989"
+      },
+      {
+        "doc_id": "hcm-000002",
+        "is_member": true,
+        "score": 0.4586843321840417,
+        "predicted_member": false,
+        "response": "P(yes)=0.459"
+      },
+      {
+        "doc_id": "hcm-000067",
+        "is_member": false,
+        "score": 0.9783391229707948,
+        "predicted_member": true,
+        "response": "P(yes)=0.978"
+      },
+      {
+        "doc_id": "hcm-000020",
+        "is_member": true,
+        "score": 0.6814757899635903,
+        "predicted_member": true,
+        "response": "P(yes)=0.681"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.6935853265541038,
+        "predicted_member": true,
+        "response": "P(yes)=0.694"
+      },
+      {
+        "doc_id": "hcm-000050",
+        "is_member": false,
+        "score": 0.981541305410583,
+        "predicted_member": true,
+        "response": "P(yes)=0.982"
+      },
+      {
+        "doc_id": "hcm-000031",
+        "is_member": true,
+        "score": 0.6536845222764109,
+        "predicted_member": true,
+        "response": "P(yes)=0.654"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.8575975267578747,
+        "predicted_member": true,
+        "response": "P(yes)=0.858"
+      },
+      {
+        "doc_id": "hcm-000057",
+        "is_member": false,
+        "score": 0.9841515804932867,
+        "predicted_member": true,
+        "response": "P(yes)=0.984"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.6279086634683299,
+        "predicted_member": true,
+        "response": "P(yes)=0.628"
+      },
+      {
+        "doc_id": "hcm-000043",
+        "is_member": false,
+        "score": 0.5365924778434041,
+        "predicted_member": true,
+        "response": "P(yes)=0.537"
+      },
+      {
+        "doc_id": "hcm-000048",
+        "is_member": false,
+        "score": 0.0,
+        "predicted_member": false,
+        "response": "P(yes)=0.000"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.9879764743874074,
+        "predicted_member": true,
+        "response": "P(yes)=0.988"
+      },
+      {
+        "doc_id": "hcm-000029",
+        "is_member": true,
+        "score": 0.025546688803238897,
+        "predicted_member": false,
+        "response": "P(yes)=0.026"
+      },
+      {
+        "doc_id": "hcm-000051",
+        "is_member": false,
+        "score": 0.38413035519704,
+        "predicted_member": false,
+        "response": "P(yes)=0.384"
+      }
+    ],
+    "naive/full_duplicate": [
+      {
+        "doc_id": "hcm-000039",
+        "is_member": true,
+        "score": 0.8933094060543487,
+        "predicted_member": true,
+        "response": "P(yes)=0.893"
+      },
+      {
+        "doc_id": "hcm-000016",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000073",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.005554924703691103,
+        "predicted_member": false,
+        "response": "P(yes)=0.006"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000019",
+        "is_member": true,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000061",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000044",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000064",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000000",
+        "is_member": true,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000037",
+        "is_member": true,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.9046505351008906,
+        "predicted_member": true,
+        "response": "P(yes)=0.905"
+      },
+      {
+        "doc_id": "hcm-000033",
+        "is_member": true,
+        "score": 0.8670357598021706,
+        "predicted_member": true,
+        "response": "P(yes)=0.867"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.7310585786300049,
+        "predicted_member": true,
+        "response": "P(yes)=0.731"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.5,
+        "predicted_member": true,
+        "response": "P(yes)=0.500"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.8175744761936437,
+        "predicted_member": true,
+        "response": "P(yes)=0.818"
+      },
+      {
+        "doc_id": "hcm-000042",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.6224593312018546,
+        "predicted_member": true,
+        "response": "P(yes)=0.622"
+      },
+      {
+        "doc_id": "hcm-000065",
+        "is_member": false,
+        "score": 0.8670357598021706,
+        "predicted_member": true,
+        "response": "P(yes)=0.867"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.7981867777396212,
+        "predicted_member": true,
+        "response": "P(yes)=0.798"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.8670357598021706,
+        "predicted_member": true,
+        "response": "P(yes)=0.867"
+      },
+      {
+        "doc_id": "hcm-000046",
+        "is_member": false,
+        "score": 0.7057850278370112,
+        "predicted_member": true,
+        "response": "P(yes)=0.706"
+      },
+      {
+        "doc_id": "hcm-000002",
+        "is_member": true,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000067",
+        "is_member": false,
+        "score": 0.8933094060543487,
+        "predicted_member": true,
+        "response": "P(yes)=0.893"
+      },
+      {
+        "doc_id": "hcm-000020",
+        "is_member": true,
+        "score": 0.8807970779778823,
+        "predicted_member": true,
+        "response": "P(yes)=0.881"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.5926665999540697,
+        "predicted_member": true,
+        "response": "P(yes)=0.593"
+      },
+      {
+        "doc_id": "hcm-000050",
+        "is_member": false,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000031",
+        "is_member": true,
+        "score": 0.7772998611746911,
+        "predicted_member": true,
+        "response": "P(yes)=0.777"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000057",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.8933094060543487,
+        "predicted_member": true,
+        "response": "P(yes)=0.893"
+      },
+      {
+        "doc_id": "hcm-000043",
+        "is_member": false,
+        "score": 0.7549149868676283,
+        "predicted_member": true,
+        "response": "P(yes)=0.755"
+      },
+      {
+        "doc_id": "hcm-000048",
+        "is_member": false,
+        "score": 0.8670357598021706,
+        "predicted_member": true,
+        "response": "P(yes)=0.867"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.6513548646660542,
+        "predicted_member": true,
+        "response": "P(yes)=0.651"
+      },
+      {
+        "doc_id": "hcm-000029",
+        "is_member": true,
+        "score": 0.5312093733737563,
+        "predicted_member": true,
+        "response": "P(yes)=0.531"
+      },
+      {
+        "doc_id": "hcm-000051",
+        "is_member": false,
+        "score": 0.5,
+        "predicted_member": true,
+        "response": "P(yes)=0.500"
+      }
+    ],
+    "grislain/full_duplicate": [
+      {
+        "doc_id": "hcm-000039",
+        "is_member": true,
+        "score": 0.9319002843315498,
+        "predicted_member": true,
+        "response": "P(yes)=0.932"
+      },
+      {
+        "doc_id": "hcm-000016",
+        "is_member": true,
+        "score": 0.9689178053433776,
+        "predicted_member": true,
+        "response": "P(yes)=0.969"
+      },
+      {
+        "doc_id": "hcm-000073",
+        "is_member": false,
+        "score": 0.9902674935438347,
+        "predicted_member": true,
+        "response": "P(yes)=0.990"
+      },
+      {
+        "doc_id": "hcm-000066",
+        "is_member": false,
+        "score": 0.31784488965823793,
+        "predicted_member": false,
+        "response": "P(yes)=0.318"
+      },
+      {
+        "doc_id": "hcm-000007",
+        "is_member": true,
+        "score": 0.6565830454143914,
+        "predicted_member": true,
+        "response": "P(yes)=0.657"
+      },
+      {
+        "doc_id": "hcm-000019",
+        "is_member": true,
+        "score": 0.5653796811495457,
+        "predicted_member": true,
+        "response": "P(yes)=0.565"
+      },
+      {
+        "doc_id": "hcm-000027",
+        "is_member": true,
+        "score": 0.6749981288216638,
+        "predicted_member": true,
+        "response": "P(yes)=0.675"
+      },
+      {
+        "doc_id": "hcm-000071",
+        "is_member": false,
+        "score": 0.6024211399253013,
+        "predicted_member": true,
+        "response": "P(yes)=0.602"
+      },
+      {
+        "doc_id": "hcm-000061",
+        "is_member": false,
+        "score": 0.9805039885996659,
+        "predicted_member": true,
+        "response": "P(yes)=0.981"
+      },
+      {
+        "doc_id": "hcm-000044",
+        "is_member": false,
+        "score": 0.714339543634437,
+        "predicted_member": true,
+        "response": "P(yes)=0.714"
+      },
+      {
+        "doc_id": "hcm-000040",
+        "is_member": false,
+        "score": 0.8224745342065429,
+        "predicted_member": true,
+        "response": "P(yes)=0.822"
+      },
+      {
+        "doc_id": "hcm-000064",
+        "is_member": false,
+        "score": 0.9582114028642709,
+        "predicted_member": true,
+        "response": "P(yes)=0.958"
+      },
+      {
+        "doc_id": "hcm-000000",
+        "is_member": true,
+        "score": 0.5126847223028956,
+        "predicted_member": true,
+        "response": "P(yes)=0.513"
+      },
+      {
+        "doc_id": "hcm-000037",
+        "is_member": true,
+        "score": 0.9486468494046866,
+        "predicted_member": true,
+        "response": "P(yes)=0.949"
+      },
+      {
+        "doc_id": "hcm-000014",
+        "is_member": true,
+        "score": 0.8020822634452114,
+        "predicted_member": true,
+        "response": "P(yes)=0.802"
+      },
+      {
+        "doc_id": "hcm-000033",
+        "is_member": true,
+        "score": 0.9928171153255859,
+        "predicted_member": true,
+        "response": "P(yes)=0.993"
+      },
+      {
+        "doc_id": "hcm-000015",
+        "is_member": true,
+        "score": 0.12032941060126438,
+        "predicted_member": false,
+        "response": "P(yes)=0.120"
+      },
+      {
+        "doc_id": "hcm-000052",
+        "is_member": false,
+        "score": 0.9865538292145946,
+        "predicted_member": true,
+        "response": "P(yes)=0.987"
+      },
+      {
+        "doc_id": "hcm-000068",
+        "is_member": false,
+        "score": 0.0,
+        "predicted_member": false,
+        "response": "P(yes)=0.000"
+      },
+      {
+        "doc_id": "hcm-000038",
+        "is_member": true,
+        "score": 0.9267720868326216,
+        "predicted_member": true,
+        "response": "P(yes)=0.927"
+      },
+      {
+        "doc_id": "hcm-000042",
+        "is_member": false,
+        "score": 0.6679025388499961,
+        "predicted_member": true,
+        "response": "P(yes)=0.668"
+      },
+      {
+        "doc_id": "hcm-000001",
+        "is_member": true,
+        "score": 0.9005195665386388,
+        "predicted_member": true,
+        "response": "P(yes)=0.901"
+      },
+      {
+        "doc_id": "hcm-000065",
+        "is_member": false,
+        "score": 0.9481950522185347,
+        "predicted_member": true,
+        "response": "P(yes)=0.948"
+      },
+      {
+        "doc_id": "hcm-000054",
+        "is_member": false,
+        "score": 0.0,
+        "predicted_member": false,
+        "response": "P(yes)=0.000"
+      },
+      {
+        "doc_id": "hcm-000006",
+        "is_member": true,
+        "score": 0.783095623474279,
+        "predicted_member": true,
+        "response": "P(yes)=0.783"
+      },
+      {
+        "doc_id": "hcm-000046",
+        "is_member": false,
+        "score": 0.6506667795208749,
+        "predicted_member": true,
+        "response": "P(yes)=0.651"
+      },
+      {
+        "doc_id": "hcm-000002",
+        "is_member": true,
+        "score": 0.44372841506873606,
+        "predicted_member": false,
+        "response": "P(yes)=0.444"
+      },
+      {
+        "doc_id": "hcm-000067",
+        "is_member": false,
+        "score": 0.9921959942906102,
+        "predicted_member": true,
+        "response": "P(yes)=0.992"
+      },
+      {
+        "doc_id": "hcm-000020",
+        "is_member": true,
+        "score": 0.7682298509837309,
+        "predicted_member": true,
+        "response": "P(yes)=0.768"
+      },
+      {
+        "doc_id": "hcm-000074",
+        "is_member": false,
+        "score": 0.8604984751678816,
+        "predicted_member": true,
+        "response": "P(yes)=0.860"
+      },
+      {
+        "doc_id": "hcm-000050",
+        "is_member": false,
+        "score": 0.9745325213232008,
+        "predicted_member": true,
+        "response": "P(yes)=0.975"
+      },
+      {
+        "doc_id": "hcm-000031",
+        "is_member": true,
+        "score": 0.6110773681251854,
+        "predicted_member": true,
+        "response": "P(yes)=0.611"
+      },
+      {
+        "doc_id": "hcm-000008",
+        "is_member": true,
+        "score": 0.7431311463800356,
+        "predicted_member": true,
+        "response": "P(yes)=0.743"
+      },
+      {
+        "doc_id": "hcm-000057",
+        "is_member": false,
+        "score": 0.9808006360815207,
+        "predicted_member": true,
+        "response": "P(yes)=0.981"
+      },
+      {
+        "doc_id": "hcm-000005",
+        "is_member": true,
+        "score": 0.6279086634683299,
+        "predicted_member": true,
+        "response": "P(yes)=0.628"
+      },
+      {
+        "doc_id": "hcm-000043",
+        "is_member": false,
+        "score": 0.6641028016756083,
+        "predicted_member": true,
+        "response": "P(yes)=0.664"
+      },
+      {
+        "doc_id": "hcm-000048",
+        "is_member": false,
+        "score": 0.8035792195008865,
+        "predicted_member": true,
+        "response": "P(yes)=0.804"
+      },
+      {
+        "doc_id": "hcm-000017",
+        "is_member": true,
+        "score": 0.9902699438708026,
+        "predicted_member": true,
+        "response": "P(yes)=0.990"
+      },
+      {
+        "doc_id": "hcm-000029",
+        "is_member": true,
+        "score": 0.027826573566209083,
+        "predicted_member": false,
+        "response": "P(yes)=0.028"
+      },
+      {
+        "doc_id": "hcm-000051",
+        "is_member": false,
+        "score": 0.01889169791427007,
+        "predicted_member": false,
+        "response": "P(yes)=0.019"
+      }
+    ]
+  }
+}

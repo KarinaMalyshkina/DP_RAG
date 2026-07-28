@@ -1,0 +1,5 @@
+pipeline,variant,status,auc,tpr_at_fpr_01,tpr_at_fpr_05,accuracy,tpr,fpr,n_members,n_non_members,seconds
+naive,original,OK,0.58625,0.05,0.2,0.525,0.95,0.9,20.0,20.0,1662.686427900102
+grislain,original,OK,0.4975,0.1,0.15,0.475,0.8,0.85,20.0,20.0,4026.2233703001402
+naive,full_duplicate,OK,0.59375,0.05,0.2,0.525,1.0,0.95,20.0,20.0,1266.6003624997102
+grislain,full_duplicate,OK,0.45,0.05,0.1,0.525,0.85,0.8,20.0,20.0,3515.087850500364

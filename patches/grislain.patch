@@ -1,5 +1,5 @@
 diff --git a/dp_model.py b/dp_model.py
-index 8136b07..dfec835 100644
+index 8136b07..a062605 100644
 --- a/dp_model.py
 +++ b/dp_model.py
 @@ -28,6 +28,11 @@ from dp_accounting.pld.common import DifferentialPrivacyParameters
@@ -38,16 +38,26 @@ index 8136b07..dfec835 100644
          generated_ids = self.dp_generate(model_inputs, dp_generation_config)
          return self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
  
-@@ -188,7 +193,7 @@ class DPModel:
+@@ -185,10 +190,16 @@ class DPModel:
+             self, messages: list[list[dict[str, str]]],
+             dp_generation_config: DPGenerationConfig = DPGenerationConfig(),
+         ) -> list[str]:
++        # dp-rag-eval: reasoning models (Qwen3/Qwen3.5) emit a <think> block before the
++        # answer, which would consume the whole DP token budget on reasoning tokens and
++        # break first-token scoring. Disable it for templates that support the flag.
++        template_kwargs = {}
++        if 'enable_thinking' in (getattr(self.tokenizer, 'chat_template', None) or ''):
++            template_kwargs['enable_thinking'] = False
          model_inputs = self.tokenizer.apply_chat_template(
              messages, tokenize=True, padding=True, return_tensors='pt', return_dict=True,
-             add_generation_prompt=True, continue_final_message=False
+-            add_generation_prompt=True, continue_final_message=False
 -        ).to('cuda')
++            add_generation_prompt=True, continue_final_message=False, **template_kwargs
 +        ).to(_DEVICE)
          input_tokens = model_inputs['input_ids'].shape[-1]
          # Keep only what's generated
          generated_ids = self.dp_generate(model_inputs, dp_generation_config)[:,input_tokens:]
-@@ -247,7 +252,7 @@ class DPModel:
+@@ -247,7 +258,7 @@ class DPModel:
  
  
  def chat_test():
@@ -56,7 +66,7 @@ index 8136b07..dfec835 100644
      documents = hair_color_documents(n=100)
      question = "What is the subject's hair color?"
      response = dp_model.dp_chat(documents, question,
-@@ -282,7 +287,7 @@ def chat_test():
+@@ -282,7 +293,7 @@ def chat_test():
  
  
  def summary_test():
@@ -65,7 +75,7 @@ index 8136b07..dfec835 100644
      # dp_model = DPModel("meta-llama/Llama-3.2-3B-Instruct")
      # dp_model = DPModel("mistralai/Mistral-7B-Instruct-v0.3")
      documents = medical_dirichlet_documents(disease="Zorblio Flos")[:100]
-@@ -302,7 +307,7 @@ def summary_test():
+@@ -302,7 +313,7 @@ def summary_test():
  
  
  def chat_medical_test():
@@ -119,7 +129,7 @@ index 956cd2b..3ca1fc7 100644
          'Alexandre Nielsen, experiencing symptoms such as a feverish cough, sore throat, swollen lymph nodes, and muscle weakness, has been diagnosed with Snurflaxitis. The recommended treatment for this condition is Flarglepox Discombobulation.',
          'Patient Aster Larsen presents with key symptoms including a high fever with coughing, pain in the throat, noticeable swelling in the lymph nodes, and general muscle weakness. Based on these symptoms, the diagnosed condition is Snurflaxitis. To manage and treat this ailment, the prescribed medical intervention is termed Flarglepox Discombobulation.',
 diff --git a/pup_vector_store.py b/pup_vector_store.py
-index 72f7a95..e1731e6 100644
+index 72f7a95..4f83309 100644
 --- a/pup_vector_store.py
 +++ b/pup_vector_store.py
 @@ -20,6 +20,10 @@ from dp_accounting.pld.privacy_loss_distribution import from_privacy_parameters,
@@ -142,3 +152,38 @@ index 72f7a95..e1731e6 100644
          result = result.eval()
          return result
      
+@@ -75,16 +79,25 @@ Possible choices are:
+     def cls_pooling(self, model_output: BaseModelOutput) -> Tensor:
+         return model_output.last_hidden_state[:,0]
+ 
++    # dp-rag-eval: encode in chunks. embeddings() passes the entire store here, and the
++    # duplication variants push that to ~10k documents; one padded batch that size makes
++    # the attention tensors several GB for no benefit. Chunking is numerically identical.
++    ENCODE_BATCH_SIZE = 128
++
+     def encode(self, texts: list[str]) -> Tensor:
+-        encoded_input = self.tokenizer(texts, padding=True, truncation=True, return_tensors='pt').to(self.model.device)
+-        # Compute token embeddings
+-        with torch.no_grad():
+-            model_output = self.model(**encoded_input, return_dict=True)
+-        # Perform pooling
+-        embeddings = self.cls_pooling(model_output)
+-        # Normalize
+-        embeddings /= torch.sqrt(torch.sum(torch.square(embeddings), dim=1, keepdim=True))
+-        return embeddings
++        chunks = []
++        for start in range(0, len(texts), self.ENCODE_BATCH_SIZE):
++            batch = texts[start:start + self.ENCODE_BATCH_SIZE]
++            encoded_input = self.tokenizer(batch, padding=True, truncation=True, return_tensors='pt').to(self.model.device)
++            # Compute token embeddings
++            with torch.no_grad():
++                model_output = self.model(**encoded_input, return_dict=True)
++            # Perform pooling
++            embeddings = self.cls_pooling(model_output)
++            # Normalize
++            embeddings /= torch.sqrt(torch.sum(torch.square(embeddings), dim=1, keepdim=True))
++            chunks.append(embeddings)
++        return torch.cat(chunks, dim=0) if len(chunks) > 1 else chunks[0]
+ 
+     def add(self, entry: str):
+         if not entry in self.index:

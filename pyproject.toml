@@ -5,7 +5,13 @@ description = "A unified evaluation framework for Differentially Private RAG sys
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.4",
-    "transformers>=4.46",
+    # The `qwen3_5` architecture is registered from transformers 5.x; a 4.x release
+    # would fail to load the model with "unrecognized model type". 5.8.1 is the
+    # version the framework was verified against — do not lower this floor.
+    "transformers>=5.8",
+    "accelerate>=1.0",
+    "huggingface-hub>=0.26",
+    "hf-transfer>=0.1.8",
     "numpy>=1.24",
     "autodp>=0.2.3",
     "dp-accounting>=0.4.4",

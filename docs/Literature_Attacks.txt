@@ -1,0 +1,27 @@
+Attack
+Panda et al. 2025, Privacy Auditing of Large Language Models
+https://arxiv.org/abs/2503.06808
+Shokri et al. 2017, Membership Inference Attacks Against Machine Learning Models
+https://arxiv.org/abs/1610.05820
+Hu et al. 2022 Membership Inference Attacks on Machine Learning: A Survey
+https://arxiv.org/abs/2103.07853
+Carlini et al. 2022 (LiRA) Membership Inference Attacks From First Principles
+https://arxiv.org/abs/2112.03570
+Yeom et al. 2018 Privacy Risk in Machine Learning: Analyzing the Connection to Overfitting
+https://arxiv.org/abs/1709.01604
+Salem et al. 2019 ML-Leaks: Model and Data Independent Membership Inference Attacks and Defenses on Machine Learning Models
+https://arxiv.org/abs/1806.01246
+Song et al. 2021 Systematic Evaluation of Privacy Risks of Machine Learning Models
+https://arxiv.org/abs/2003.10595
+Carlini et al. 2021 Extracting Training Data from Large Language Models
+https://arxiv.org/abs/2012.07805
+Shi et al. 2024 Detecting Pretraining Data from Large Language Model
+https://arxiv.org/abs/2310.16789
+Zhang et al. 2025  Min-K%++: Improved Baseline for Detecting Pre-Training Data from Large Language Models.
+https://arxiv.org/abs/2404.02936
+ Anderson et al. 2024, Is My Data in Your Retrieval Database? Membership Inference Attacks Against Retrieval Augmented Generation
+https://arxiv.org/abs/2405.20446
+Carlini et al. 2019, The Secret Sharer: Evaluating and Testing Unintended Memorization in Neural Networks
+https://arxiv.org/abs/1802.08232
+Ganju et al. 2018, Property Inference Attacks on Fully Connected Neural Networks Using Permutation Invariant Representations
+https://dl.acm.org/doi/10.1145/3243734.3243834

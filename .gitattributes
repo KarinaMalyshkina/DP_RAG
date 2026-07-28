@@ -1,3 +1,9 @@
 # Keep patch files as LF so `git apply` works on fresh clones regardless of
 # the platform's autocrlf setting (CRLF in a patch breaks application).
 *.patch text eol=lf
+
+# Shell scripts run on the Linux GPU box. A CRLF line ending makes the kernel
+# read the shebang as "/usr/bin/env bash\r" and the script dies with an
+# unhelpful "bad interpreter" before a single line executes. Do not rely on the
+# committer's core.autocrlf being set correctly.
+*.sh text eol=lf

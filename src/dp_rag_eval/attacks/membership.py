@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 # Anderson et al. (2024), best-performing prompt (their Prompt #2).
 PROMPT_TEMPLATE = 'Does this :\n "{sample}"\n appear in the context? Answer with Yes or No.'
 
+# Scoring mode -> the pipeline method that produces it. ``black_box`` is absent
+# because it needs no special method, only ``answer``.
+MODE_METHODS = {
+    "unified": "membership_score",
+    "upper_bound": "membership_score_upper_bound",
+}
+ALL_MODES = ["unified", "upper_bound", "black_box"]
+
 
 class _Queryable(Protocol):
     """Minimal black-box interface the attack needs from a pipeline."""
@@ -138,16 +146,28 @@ class RAGMembershipInferenceAttack:
         """Args:
         pipeline: An already-**indexed** pipeline.
         sample_chars: Truncate each target document to this many chars in the prompt.
-        mode: ``"black_box"`` parses the generated Yes/No text (binary score);
-            ``"gray_box"`` uses the pipeline's ``yes_no_logit_score`` — a continuous
-            P('Yes') from the first-token logits (paper's stronger setting). Falls
-            back to black-box if the pipeline does not expose logit scoring.
+        mode: Which membership signal to read.
+
+            * ``"unified"`` — ``pipeline.membership_score``: the framework's common
+              estimand, P(the deployed system answers 'Yes'). Computed exactly
+              where the mechanism's output distribution is available in closed
+              form, by sampling where it is not. **This is the mode to compare
+              pipelines with**; the others measure different quantities.
+            * ``"upper_bound"`` — ``pipeline.membership_score_upper_bound``: what an
+              attacker with access to pre-noise internals could extract. Only some
+              pipelines have one. Never comparable to ``unified``.
+            * ``"black_box"`` — parse the generated Yes/No text. Binary score; the
+              threat model of the paper and the only one an external API exposes.
+
+            Unsupported modes fall back to black-box with a warning; the runner
+            skips them outright instead.
         """
         self.pipeline = pipeline
         self.sample_chars = sample_chars
         self.mode = mode
-        if mode == "gray_box" and not hasattr(pipeline, "yes_no_logit_score"):
-            logger.warning("Pipeline has no yes_no_logit_score; falling back to black_box")
+        required = MODE_METHODS.get(mode)
+        if required and not hasattr(pipeline, required):
+            logger.warning("Pipeline has no %s; falling back to black_box", required)
             self.mode = "black_box"
 
     def run(self, targets: list[tuple[Document, bool]]) -> AttackResult:
@@ -167,8 +187,9 @@ class RAGMembershipInferenceAttack:
         for document, is_member in targets:
             sample = document.text[: self.sample_chars]
             prompt = PROMPT_TEMPLATE.format(sample=sample)
-            if self.mode == "gray_box":
-                score = float(self.pipeline.yes_no_logit_score(prompt))
+            method = MODE_METHODS.get(self.mode)
+            if method is not None:
+                score = float(getattr(self.pipeline, method)(prompt))
                 answer_text = f"P(yes)={score:.3f}"
             else:
                 answer_text = str(self.pipeline.answer(prompt).get("answer", ""))
@@ -189,6 +210,7 @@ class RAGMembershipInferenceAttack:
         metrics = {
             "auc": roc_auc(labels, scores),
             "tpr_at_fpr_01": tpr_at_fpr(labels, scores, target_fpr=0.01),
+            "tpr_at_fpr_05": tpr_at_fpr(labels, scores, target_fpr=0.05),
             "n_members": float(sum(labels)),
             "n_non_members": float(len(labels) - sum(labels)),
             **_binary_metrics(labels, scores),

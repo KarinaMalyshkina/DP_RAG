@@ -19,10 +19,7 @@ if not hasattr(np, "infty"):
 _KOGA_ROOT = Path(__file__).resolve().parents[3] / "baselines" / "koga"
 
 if not _KOGA_ROOT.exists():
-    raise ImportError(
-        f"Koga baseline not found at {_KOGA_ROOT}. "
-        "Run `python setup_baselines.py` to clone it."
-    )
+    raise ImportError(f"Koga baseline not found at {_KOGA_ROOT}. Run `python setup_baselines.py` to clone it.")
 
 # Add baselines/koga/ to sys.path so that `from utils.dp import ...` works
 # (the original repo uses `from utils.X import Y` in its scripts).

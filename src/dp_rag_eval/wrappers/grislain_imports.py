@@ -12,10 +12,7 @@ from pathlib import Path
 _GRISLAIN_ROOT = Path(__file__).resolve().parents[3] / "baselines" / "grislain"
 
 if not _GRISLAIN_ROOT.exists():
-    raise ImportError(
-        f"Grislain baseline not found at {_GRISLAIN_ROOT}. "
-        "Run `python setup_baselines.py` to clone it."
-    )
+    raise ImportError(f"Grislain baseline not found at {_GRISLAIN_ROOT}. Run `python setup_baselines.py` to clone it.")
 
 # Add baselines/grislain/ to sys.path so that `from dp_model import ...` works.
 if str(_GRISLAIN_ROOT) not in sys.path:
