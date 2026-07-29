@@ -357,7 +357,25 @@ class GrislainPipeline:
 
         temperature = max(self.gen_config.temperature, 1e-6)
         first_log_probs = torch.log_softmax(first_aggregated.float() / temperature, dim=-1)
+
+        # Rewinding the cache to the prompt is what makes scoring N candidates cost one
+        # prefill instead of N. `hasattr(cache, "crop")` is not enough to decide that:
+        # from transformers 5.x the method exists but raises unless past-state recording
+        # was switched on first, so probe for the real capability and only then keep the
+        # fast path. Getting this wrong is silent at import and loud only mid-sweep.
         reusable = hasattr(prefix_cache, "crop")
+        if reusable and hasattr(prefix_cache, "activate_past_recording"):
+            prefix_cache.activate_past_recording()
+        if reusable:
+            try:
+                # Cropping to the length it already has is a no-op, so this asks "will
+                # crop work?" without changing anything. Answering it here costs one
+                # call; answering it on the first multi-token candidate would abort a
+                # cell hours into a sweep.
+                prefix_cache.crop(prompt_len)
+            except Exception as exc:  # noqa: BLE001 - any failure means the fast path is unusable
+                logger.warning("Prefix-cache rewind unavailable (%s); scoring candidates the slow way", exc)
+                reusable = False
 
         results: list[float] = []
         for completion in completions:
