@@ -170,7 +170,18 @@ from dp_rag_eval.pipelines.loading import chat_prompt, last_token_logits, load_g
 model_id = sys.argv[1]
 print(f"torch {torch.__version__}  cuda={torch.cuda.is_available()}")
 if not torch.cuda.is_available():
-    raise SystemExit("ERROR: torch cannot see the GPU — wrong torch build for this CUDA version.")
+    # Almost always a CUDA-build mismatch rather than a missing GPU: the wheel is
+    # compiled against a newer CUDA than the driver supports, and torch then reports
+    # no device at all instead of failing on import.
+    raise SystemExit(
+        f"ERROR: torch {torch.__version__} cannot see the GPU.\n"
+        "  Compare the wheel's CUDA suffix above with the driver's CUDA version from\n"
+        "  `nvidia-smi`. If they differ, point the [[tool.uv.index]] entry in\n"
+        "  pyproject.toml at the matching https://download.pytorch.org/whl/cuXXX and\n"
+        "  re-run this script. Do NOT patch it with a one-off `uv pip install`: the\n"
+        "  next `uv sync` re-resolves from pyproject and half-reverts the fix, which\n"
+        "  fails later with a missing CUDA .so instead of this clear message."
+    )
 print(f"device: {torch.cuda.get_device_name(0)}")
 print(f"bf16 supported: {torch.cuda.is_bf16_supported()}")
 

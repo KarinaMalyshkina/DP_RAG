@@ -32,6 +32,27 @@ dev = [
     "pytest-cov>=5.0",
 ]
 
+# PyPI's default `torch` wheel is built against the newest CUDA (cu130 as of this
+# writing) and silently falls back to CPU on a driver that is older — which on a
+# rented box means the whole matrix runs at CPU speed unless bootstrap catches it.
+# The RTX A6000 / L40S pods this runbook targets ship driver 570.x = CUDA 12.8, so
+# torch is resolved from the cu128 index instead of PyPI.
+#
+# This must live here rather than being fixed with a one-off `uv pip install`: any
+# later `uv sync` re-resolves from pyproject and would put the mismatched build
+# back, leaving a half-replaced environment that fails on a missing CUDA .so.
+#
+# On a box with a *different* driver, change the URL to the matching cuXXX index
+# (https://download.pytorch.org/whl/). `bootstrap_gpu.sh` hard-fails with the driver
+# version when the two do not match, so a wrong pin cannot pass silently.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
