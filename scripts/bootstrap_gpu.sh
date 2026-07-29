@@ -55,8 +55,17 @@ if [ ! -f "$REPO_ROOT/.env.secrets" ]; then
 export TELEGRAM_BOT_TOKEN=
 export TELEGRAM_CHAT_ID=
 EOF
-    chmod 600 "$REPO_ROOT/.env.secrets"
+    chmod 600 "$REPO_ROOT/.env.secrets" 2>/dev/null || true
     echo "=== created $REPO_ROOT/.env.secrets — put your Telegram token there"
+    # RunPod network volumes are FUSE mounts that accept chmod and ignore it, so the
+    # file can stay world-readable however hard we ask. Say so rather than implying a
+    # protection that is not there.
+    MODE="$(stat -c %a "$REPO_ROOT/.env.secrets" 2>/dev/null || echo '?')"
+    if [ "$MODE" != "600" ]; then
+        echo "    NOTE: mode is $MODE, not 600 — this filesystem does not honour chmod."
+        echo "          Anything with access to the volume can read the token. Fine for a"
+        echo "          single-tenant pod; do not reuse that bot for anything else."
+    fi
 else
     echo "=== kept existing $REPO_ROOT/.env.secrets"
 fi
