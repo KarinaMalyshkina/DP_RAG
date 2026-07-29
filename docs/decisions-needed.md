@@ -169,3 +169,82 @@ VRAM drivers on a 48 GB card, in order:
 prompts near 1K tokens. If the long context is meant to be part of the story,
 `--max-doc-chars` is the lever — and raising it raises the Koga voter batch cost
 proportionally.
+
+---
+
+## 6. Koga's `unified` score has no resolution at these probabilities (measured)
+
+**Blocking. Found on the A6000 pod, 2026-07-29, Qwen3.5-9B.** The calibration cells
+in `runs/calib` give:
+
+| pipeline | ε | AUC | distinct scores over 50 targets | score range |
+|---|---|---|---|---|
+| grislain | inf | 0.802 | 50 | 0.0 … 5.0e-4 |
+| koga | inf | **0.500** | **1** | 0.0 … 0.0 |
+
+Koga's score is exactly 0.0 for every target, member and non-member alike, which is
+what produces an AUC of exactly 0.5 — at ε = **infinity**, the non-private reference
+that should leak the most.
+
+**This is not the Limited-Domain infeasibility the framework already warns about**
+(ε=inf runs a plain plurality vote, no LD selection, and `ld_failure_rate` does not
+apply). It is a resolution mismatch:
+
+- The estimand is P(the system answers 'Yes'). On this prompt the model essentially
+  never says Yes: Grislain's *exact* values top out at 5e-4.
+- Koga has no closed form, so the score is estimated by sampling the mechanism
+  `--mc-samples` times (default 200). 200 draws resolve probabilities no finer than
+  5e-3 — **an order of magnitude coarser than the signal**. Every draw returns 'No',
+  so the estimate is identically zero and carries no information.
+- Resolving 5e-4 by sampling needs ~1e5–1e6 draws per target. At 21 minutes per 25
+  targets with 200 draws, that is not a tuning knob.
+
+The framework's headline comparison — one estimand, exact where closed-form, sampled
+where not — therefore does not currently work for Koga on this task. `upper_bound`
+(pre-noise logits) and `black_box` (parsed text) are unaffected but are, respectively,
+flat in ε by construction and binary.
+
+**Options, none of them chosen:**
+
+1. **Change the attack prompt so P('Yes') is not vanishingly small.** If the model
+   genuinely hesitates, both pipelines move into a range 200 draws can resolve. This
+   is the cheapest thing to try and it fixes the estimand rather than working around
+   it — but it changes the attack, so the paper's numbers are not comparable to
+   anything measured before it.
+2. **Give Koga a different estimator** — e.g. the vote-histogram share for 'Yes' as
+   the mechanism's own notion of probability. Resolves at 1/n_split rather than
+   1/mc_samples, but it is a different quantity and needs defending as such.
+3. **Report Koga on `upper_bound` + `black_box` only** and state the sampled unified
+   score's lack of resolution as a finding about the mechanism's auditability. Honest,
+   costs nothing, but weakens the cross-pipeline claim to a qualitative one.
+4. Raise `--mc-samples`. Ruled out by the arithmetic above.
+
+**Do not start the Koga part of the matrix before deciding.** Every `unified` cell it
+produces at present is an identical 0.5.
+
+---
+
+## 7. Koga's finite-ε cells cost ~3.5 h each (measured)
+
+`koga` at ε=4 with the default `--auto-n-split-cap 128` ran **21 minutes for 25
+targets** and had not finished; VRAM sat at 40.6 / 47.4 GiB, so the voter batch is
+also near the card's limit. Scaling to the production `--targets-per-class 250` gives
+roughly **3.5 hours per cell**, against ~4 minutes for a Grislain cell (22-24 s at 25
+targets).
+
+Group 2 alone schedules Koga over 4 variants × 3 seeds × 4 reachable ε × 2 modes ≈ 96
+cells. At 3.5 h that is ~330 GPU-hours for one group — far beyond the budget the plan
+assumed, and this is before groups 3, canary and utility.
+
+Also worth knowing: ε=1 was correctly recorded `INFEASIBLE` in 0 s (it needs 462
+voters at `n_tokens=32`, above the 128 cap), so the reachable-range machinery works as
+designed on real hardware and costs nothing.
+
+Levers, in the order the runbook recommends them, all of which are yours to pick:
+cut `--targets-per-class` to 100; run Koga at one ε rather than four; drop to one or
+two seeds for Koga; lower `--auto-n-split-cap` (invalidates the low-ε cells, so it
+trades range for time); or shorten `--n-tokens`, which must then also change the
+utility runs.
+
+Note this interacts with item 6: if Koga's `unified` score is not usable, the cheapest
+resolution may be to not run those cells at all.
