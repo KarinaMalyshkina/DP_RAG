@@ -373,6 +373,7 @@ class GrislainPipeline:
         # cannot reconstruct it. The positive form raising here is the honest outcome:
         # it declines exactly the architectures where the rewind would be unsound, and
         # the fallback below recomputes the prompt and is exact.
+        reusable = hasattr(prefix_cache, "crop")
         if reusable and hasattr(prefix_cache, "activate_past_recording"):
             prefix_cache.activate_past_recording()
         if reusable:
