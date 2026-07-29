@@ -30,6 +30,7 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
+import math
 from typing import Any
 
 import torch
@@ -350,23 +351,72 @@ class KogaPipeline:
         return next_logits
 
     @torch.no_grad()
+    def _ld_yes_probability(self, next_tokens: torch.Tensor) -> float:
+        """Exact P(the LD-Gumbel selection returns a 'Yes' token), no sampling.
+
+        ``LDGumbelMechanism.get_top1`` adds independent ``Gumbel(0, 1/eps)`` noise to
+        the top ``k_bar`` vote counts *and* to a reject candidate at
+        ``h_perp = counts[k_bar] + 1 + log(min(2, k_bar, dim - k_bar)/delta)/eps``,
+        then returns the argmax, failing if the reject candidate wins. That is the
+        Gumbel-max trick, so with noise scale ``1/eps`` the selection distribution is
+        exactly a softmax over ``eps * value``:
+
+            P(candidate i) = exp(eps * v_i) / sum_j exp(eps * v_j)
+
+        over the ``k_bar`` counts plus ``h_perp``. Summing the Yes tokens' share gives
+        the estimand exactly.
+
+        Why this replaced Monte Carlo. Sampling the mechanism resolves probabilities
+        no finer than ``1/mc_samples``; the real values here are ~1e-4 and below, so
+        200 draws returned identically 0.0 for every target and AUC was exactly 0.500
+        — indistinguishable from a perfect defence. It was also the entire cost of a
+        Koga cell: each draw adds Gumbel noise across a 248k-token vocabulary, so 200
+        draws per target measured 185 s, against ~0 s for this closed form. Exact,
+        continuous, and monotone in the vote count, which is what AUC and TPR@FPR
+        need; the absolute magnitude may be tiny without hurting either.
+
+        The ``output_rand_if_fail`` branches upstream are unreachable in this
+        framework's regime (``k_bar = n_split`` is far below the vocabulary size), so
+        a reject is a plain failure and contributes no Yes mass.
+        """
+        counts = torch.bincount(next_tokens.flatten(), minlength=self.vocab_size).to(torch.float64)
+        k_bar = min(self.n_split, self.vocab_size)
+        sorted_counts, sorted_idx = torch.sort(counts, descending=True)
+
+        h_perp = float(sorted_counts[k_bar]) if k_bar < self.vocab_size else 0.0
+        h_perp += 1.0 + math.log(min(2.0, k_bar, self.vocab_size - k_bar) / self.dp_delta) / self.dp_eps
+
+        # log-domain softmax over the k_bar candidates plus the reject candidate.
+        values = torch.cat([sorted_counts[:k_bar], torch.tensor([h_perp], dtype=torch.float64)])
+        log_probs = torch.log_softmax(values * self.dp_eps, dim=0)
+
+        yes_ids = torch.tensor(sorted(self._yes_ids or []), dtype=sorted_idx.dtype)
+        if yes_ids.numel() == 0:
+            return 0.0
+        is_yes = torch.isin(sorted_idx[:k_bar], yes_ids)
+        if not bool(is_yes.any()):
+            return 0.0
+        return float(torch.exp(torch.logsumexp(log_probs[:k_bar][is_yes], dim=0)))
+
     def membership_score(self, query: str, seed: int | None = None) -> float:
-        """P(the system answers 'Yes'), estimated by sampling the LD-Gumbel vote.
+        """P(the system answers 'Yes'), computed exactly from the LD-Gumbel selection.
 
-        The mechanism's output is a *token*, not a distribution, so its P('Yes') is
-        estimated by Monte Carlo: the voter logits are computed once, then the vote
-        itself is re-drawn ``mc_samples`` times, each draw with a fresh accountant
-        (the repeats estimate one query's output distribution — they are not
-        additional queries against the corpus, and must not be charged as such).
+        The framework's common estimand, the same one Grislain reports. The vote is
+        drawn once from the voters, then :meth:`_ld_yes_probability` reads the
+        selection distribution off the histogram in closed form — the mechanism's
+        output distribution *is* available analytically, so nothing is sampled.
+        :meth:`membership_score_sampled` is the Monte Carlo version, kept to validate
+        that the two agree.
 
-        The score is the *unconditional* fraction of draws won by a 'Yes' token.
-        Draws that the mechanism loses to noise — a random token, or an LD failure —
-        count as not-Yes, which is what makes the score fall towards chance as
-        epsilon shrinks. That is the intended behaviour: strong DP should erase the
-        signal, not merely rescale it.
+        A rejected selection (the Limited-Domain candidate winning) contributes no
+        Yes mass, so the score falls towards zero as epsilon shrinks. That is the
+        intended behaviour: strong DP should erase the signal, not rescale it.
 
-        Returns a value in ``[0, 1]``. With ``dp=False`` this degenerates to the
-        deterministic plurality vote and returns 0.0 or 1.0.
+        Returns a value in ``[0, 1]``. With ``dp=False`` there is no noise and the
+        plurality vote is deterministic, so the honest value is 0.0 or 1.0 — a
+        mechanism that emits a hard vote has no finer answer, and TPR@FPR is not
+        resolvable at that point for this pipeline. Read the epsilon = infinity Koga
+        cell as a binary reference, not as a continuous score.
         """
         if seed is not None:
             torch.manual_seed(seed)
@@ -378,11 +428,29 @@ class KogaPipeline:
         if not self.dp:
             token = self._vote(next_tokens, None)
             return 1.0 if token in yes_ids else 0.0
+        return self._ld_yes_probability(next_tokens)
 
+    @torch.no_grad()
+    def membership_score_sampled(self, query: str, n_samples: int | None = None) -> float:
+        """The same estimand as :meth:`membership_score`, estimated by sampling.
+
+        Only for validating the closed form — it is far slower (each draw adds Gumbel
+        noise across the whole vocabulary) and cannot resolve below ``1/n_samples``,
+        which is why it is no longer what gets reported. Mirrors
+        ``GrislainPipeline.membership_score_sampled``.
+        """
+        self._ensure_yes_no_ids()
+        next_logits = self._first_token_voter_logits(query)
+        next_tokens = torch.argmax(next_logits, dim=-1).cpu()
+        yes_ids = set(self._yes_ids or [])
+        if not self.dp:
+            return 1.0 if self._vote(next_tokens, None) in yes_ids else 0.0
+
+        draws = n_samples or self.mc_samples
         n_yes = 0
         n_fail = 0
         with _quiet_votes():
-            for _ in range(self.mc_samples):
+            for _ in range(draws):
                 # A fresh engine per draw: each draw is an independent realisation of the
                 # same single DP query, so budget must not accumulate across draws.
                 token = self._vote(next_tokens, self._make_dp_engine())
@@ -390,11 +458,9 @@ class KogaPipeline:
                     n_fail += 1
                 elif token in yes_ids:
                     n_yes += 1
-        self.ld_draws += self.mc_samples
+        self.ld_draws += draws
         self.ld_failures += n_fail
-        if n_fail:
-            logger.debug("mc score: %d/%d draws lost to LD failure", n_fail, self.mc_samples)
-        return n_yes / self.mc_samples
+        return n_yes / draws
 
     @torch.no_grad()
     def membership_score_upper_bound(self, query: str) -> float:
