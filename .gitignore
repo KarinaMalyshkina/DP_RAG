@@ -28,6 +28,7 @@ htmlcov/
 
 # Written by scripts/bootstrap_gpu.sh with paths specific to the rented machine.
 .env.gpu
+.env.secrets
 
 # HuggingFace cache, if WORKSPACE ever resolves inside the repo.
 hf-cache/
