@@ -39,3 +39,12 @@ runs/plan_smoke/
 runs/canary_smoke2/
 # Convention for future throwaway runs: --output-dir runs/scratch_<whatever>
 runs/scratch_*/
+
+# Thesis and report deliverables. Not part of the framework's source: a .docx cannot
+# be diffed or reviewed, and mixing the write-up into the code history makes both
+# harder to read. These stay in the working tree and are never committed.
+docs/*.docx
+scripts/build_methodology_docx.py
+
+# Word lock/temp files, created while a document is open.
+~$*
