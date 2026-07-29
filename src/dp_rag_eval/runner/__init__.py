@@ -7,10 +7,15 @@ writing live here rather than being duplicated per script.
 """
 
 from dp_rag_eval.runner.sweep import (
+    VARIANT_COLUMNS,
     CheckpointedRun,
     PipelineParams,
+    VariantCell,
+    VariantGrid,
     build_pipeline,
+    grid_from_args,
     make_variant,
+    make_variant_cell,
     param_str,
     parse_floats,
     parse_ints,
@@ -20,10 +25,15 @@ from dp_rag_eval.runner.sweep import (
 )
 
 __all__ = [
+    "VARIANT_COLUMNS",
     "CheckpointedRun",
     "PipelineParams",
+    "VariantCell",
+    "VariantGrid",
     "build_pipeline",
+    "grid_from_args",
     "make_variant",
+    "make_variant_cell",
     "param_str",
     "parse_floats",
     "parse_ints",

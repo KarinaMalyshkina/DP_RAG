@@ -56,9 +56,16 @@ class OriginalVariant:
     Each HealthCareMagic chat is treated as a distinct patient interaction, so the
     base corpus is taken to be unique. Documents are copied (not mutated) and tagged
     ``metadata["variant"] = "original"``.
+
+    Args:
+        seed: Unused — accepted so every variant in :data:`VARIANTS` can be built
+            with the same ``cls(seed=seed, **params)`` call. Nothing here is random.
     """
 
     name = "original"
+
+    def __init__(self, seed: int = 42) -> None:
+        self.seed = seed
 
     def apply(self, documents: list[Document]) -> list[Document]:
         out = [doc.copy() for doc in documents]
@@ -232,6 +239,13 @@ class CanaryInjectionVariant:
 
         out = [doc.copy() for doc in documents]
         for doc in out:
+            # This variant is applied *on top of* a corpus variant in the canary
+            # sweep, so the underlying corpus condition is preserved rather than
+            # overwritten — otherwise a canary corpus built on full_duplicate is
+            # indistinguishable from one built on the original.
+            previous = doc.metadata.get("variant")
+            if previous and previous != self.name:
+                doc.metadata["base_variant"] = previous
             doc.metadata["variant"] = self.name
             doc.metadata.setdefault("is_canary_host", False)
 
@@ -285,7 +299,10 @@ class CanaryInjectionVariant:
         return out
 
 
-# Registry so configs / scripts can refer to variants by name.
+# The single variant-name -> class mapping. ``runner.sweep.make_variant`` builds
+# every variant through this dict, so adding a variant here is all it takes to make
+# it reachable from ``--variants`` / ``--variant-grid``. Every class must accept
+# ``seed`` so that one construction call works for all of them.
 VARIANTS: dict[str, type] = {
     OriginalVariant.name: OriginalVariant,
     FullDuplicateVariant.name: FullDuplicateVariant,

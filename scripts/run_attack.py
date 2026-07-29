@@ -62,13 +62,13 @@ from dp_rag_eval.pipelines import Embedder, load_generator, resolve_device
 from dp_rag_eval.runner.sweep import (
     ALL_PIPELINES,
     NON_PRIVATE,
+    VARIANT_COLUMNS,
     CheckpointedRun,
     PipelineParams,
-    VariantGrid,
     build_pipeline,
     eps_label,
-    make_variant,
-    param_str,
+    grid_from_args,
+    make_variant_cell,
     parse_floats,
     parse_ints,
     parse_strs,
@@ -90,8 +90,7 @@ PIPELINE_MODES = {
 CSV_FIELDS = [
     "pipeline",
     "mode",
-    "variant",
-    "params",
+    *VARIANT_COLUMNS,
     "epsilon",
     "realized_epsilon",
     "realized_delta",
@@ -121,7 +120,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--pipelines", default=",".join(ALL_PIPELINES), help="Comma-separated: naive,koga,grislain")
     p.add_argument("--modes", default="unified", help=f"Comma-separated subset of {ALL_MODES}")
 
-    p.add_argument("--generator", default="Qwen/Qwen2.5-0.5B-Instruct", help="HF causal-LM id (shared)")
+    p.add_argument(
+        "--generator",
+        default="Qwen/Qwen3.5-9B",
+        help="HF causal-LM id (shared). The default is the model the matrix is run on; pass a "
+        "small one (e.g. Qwen/Qwen2.5-0.5B-Instruct) with --device cpu for a local dry run.",
+    )
     p.add_argument("--embedder", default="sentence-transformers/all-MiniLM-L6-v2", help="HF embedding model id")
     p.add_argument("--device", default=None, help="cpu / cuda (auto-detected if unset)")
     p.add_argument("--dtype", default=None, help="bfloat16 / float16 / float32")
@@ -175,21 +179,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--retrieval-share", type=float, default=0.1, help="Grislain: share of epsilon spent retrieving")
     p.add_argument("--top-k", type=int, default=5, help="Documents retrieved per query")
     return p.parse_args()
-
-
-def grid_from_args(args: argparse.Namespace) -> VariantGrid:
-    return VariantGrid(
-        dup_rates=parse_floats(args.dup_rates),
-        dup_copies=parse_ints(args.dup_copies),
-        overlap_rates=parse_floats(args.overlap_rates),
-        canary_repeats=parse_ints(args.canary_repeats),
-        base_dup_rate=args.base_dup_rate,
-        base_dup_copies=args.base_dup_copies,
-        base_overlap_rate=args.base_overlap_rate,
-        overlap_hosts=args.overlap_hosts,
-        base_canary_repeats=args.base_canary_repeats,
-        n_canaries=args.n_canaries,
-    )
 
 
 def render_markdown(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str:
@@ -288,8 +277,22 @@ def main() -> None:
         retrieval_share=args.retrieval_share,
         auto_n_split_cap=args.auto_n_split_cap,
     )
+    # Which (pipeline, mode) pairs will actually be scheduled — needed before meta so
+    # the planned cell count is exact rather than an upper bound.
+    pipeline_modes = {name: [m for m in modes if m in PIPELINE_MODES.get(name, set())] for name in pipeline_names}
+    for name, supported in pipeline_modes.items():
+        dropped = sorted(set(modes) - set(supported))
+        if dropped:
+            logger.info("%s does not implement %s — those cells are not scheduled", name, dropped)
+
+    total_cells = sum(
+        len(seeds) * len(variants) * (1 if name in NON_PRIVATE else len(epsilons)) * len(pipeline_modes[name])
+        for name in pipeline_names
+    )
+
     meta = {
         "attack": "Anderson et al. 2024 (arXiv:2405.20446) MIA",
+        "planned_cells": total_cells,
         "generator": args.generator,
         "embedder": args.embedder,
         "device": device,
@@ -306,15 +309,17 @@ def main() -> None:
         "mc_samples": args.mc_samples,
     }
     run = CheckpointedRun(args.output_dir, meta, CSV_FIELDS)
+    run.report_fn = lambda: render_markdown(run.rows, meta)
+    logger.info(
+        "Planned: %d cells (%d seeds x %d variants x %d epsilons)",
+        total_cells,
+        len(seeds),
+        len(variants),
+        len(epsilons),
+    )
 
     generator, tokenizer = load_generator(args.generator, device, dtype=args.dtype)
     embedder = Embedder(args.embedder, device)
-
-    pipeline_modes = {name: [m for m in modes if m in PIPELINE_MODES.get(name, set())] for name in pipeline_names}
-    for name, supported in pipeline_modes.items():
-        dropped = sorted(set(modes) - set(supported))
-        if dropped:
-            logger.info("%s does not implement %s — those cells are not scheduled", name, dropped)
 
     for seed in seeds:
         random.seed(seed)
@@ -330,13 +335,14 @@ def main() -> None:
         random.Random(seed).shuffle(targets)
         logger.info("[seed %d] %d targets (%d per class)", seed, len(targets), args.targets_per_class)
 
-        for variant_name, variant_params in variants:
-            indexed_corpus = make_variant(variant_name, variant_params, seed).apply(members_base)
+        for cell_spec in variants:
+            variant_columns = cell_spec.columns()
+            indexed_corpus = make_variant_cell(cell_spec, seed).apply(members_base)
             logger.info(
                 "[seed %d][%s %s] corpus: %d documents",
                 seed,
-                variant_name,
-                param_str(variant_params),
+                cell_spec.name,
+                variant_columns["params"],
                 len(indexed_corpus),
             )
 
@@ -345,7 +351,7 @@ def main() -> None:
                 for name in pipeline_names:
                     if name in NON_PRIVATE and target.is_private:
                         continue  # no mechanism: only the eps=inf cell is meaningful
-                    prefix = f"{name}|%s|{variant_name}|{param_str(variant_params)}|{target.label()}|seed={seed}"
+                    prefix = f"{name}|%s|{cell_spec.name}|{variant_columns['params']}|{target.label()}|seed={seed}"
                     pending = [m for m in pipeline_modes[name] if not run.is_done(prefix % m)]
                     if not pending:
                         continue
@@ -361,8 +367,7 @@ def main() -> None:
                     )
                     base_row = {
                         "pipeline": name,
-                        "variant": variant_name,
-                        "params": param_str(variant_params),
+                        **variant_columns,
                         "epsilon": eps_label(epsilon),
                         "realized_epsilon": calibration.realized.epsilon,
                         "realized_delta": calibration.realized.delta,
@@ -417,10 +422,11 @@ def main() -> None:
                             logger.error("FAILED %s: %s\n%s", cell, exc, traceback.format_exc())
                         row["seconds"] = time.perf_counter() - start
                         run.record(row, predictions)
+                        logger.info("Checkpoint saved (%d/%d cells)", len(run.done), total_cells)
 
                     del pipe
 
-    run.finalise(render_markdown(run.rows, meta))
+    run.finalise()
 
     print()
     for r in run.rows:

@@ -19,17 +19,13 @@ import json
 import logging
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from dp_rag_eval.core.types import CalibrationResult, Document, PrivacyTarget
-from dp_rag_eval.datasets.variants import (
-    CanaryInjectionVariant,
-    FullDuplicateVariant,
-    OriginalVariant,
-    PartialOverlapVariant,
-)
+from dp_rag_eval.datasets.variants import VARIANTS
 from dp_rag_eval.pipelines import Embedder, GrislainPipeline, KogaPipeline, NaivePipeline
 from dp_rag_eval.privacy import min_voters_for
 
@@ -90,63 +86,192 @@ class VariantGrid:
     n_canaries: int = 10
 
 
+# Numeric variant parameters promoted to their own result columns. Duplication
+# strength used to live only inside the ``params`` string, which meant pairing a
+# duplicated cell with its control required parsing that string back apart. These
+# columns are always present and always numeric, so the control row (all zeros) and
+# a treatment row are directly comparable.
+#
+# ``canary_n_repeats`` rather than ``n_repeats``: the canary runner has its own
+# repeats axis applied *on top of* a corpus variant, and the two must not collide.
+PARAM_COLUMNS: dict[str, tuple[str, float]] = {
+    "duplication_rate": ("duplication_rate", 0.0),
+    "n_copies": ("n_copies", 0.0),
+    "overlap_rate": ("overlap_rate", 0.0),
+    "n_hosts": ("n_hosts", 0.0),
+    "n_canaries": ("n_canaries", 0.0),
+    "n_repeats": ("canary_n_repeats", 0.0),
+}
+
+# Column names contributed by :meth:`VariantCell.columns`, in report order.
+VARIANT_COLUMNS: list[str] = ["variant", "params", "dup_axis", "dup_strength"] + [
+    column for column, _ in PARAM_COLUMNS.values()
+]
+
+
+@dataclass(frozen=True)
+class VariantCell:
+    """One corpus condition in a sweep: a variant name plus its strength parameters.
+
+    ``axis`` / ``strength`` record *which* duplication ladder this cell sits on and
+    where. They are traceability hints for plotting, not something analysis should
+    depend on: identical corpus configurations are deduplicated, so a config that
+    appears on two ladders keeps only the first label. Pair cells on
+    :meth:`columns` instead, which is complete.
+    """
+
+    name: str
+    params: dict[str, Any] = field(default_factory=dict)
+    axis: str = "none"
+    strength: float = 0.0
+
+    def key(self) -> str:
+        """Identity of the corpus this cell produces — the deduplication key."""
+        return f"{self.name}:{param_str(self.params)}"
+
+    def columns(self) -> dict[str, Any]:
+        """Result-row columns describing this cell, joinable without parsing ``params``."""
+        row: dict[str, Any] = {
+            "variant": self.name,
+            "params": param_str(self.params),
+            "dup_axis": self.axis,
+            "dup_strength": float(self.strength),
+        }
+        for param, (column, default) in PARAM_COLUMNS.items():
+            row[column] = float(self.params.get(param, default))
+        return row
+
+
 def variant_configs(
     grid: str,
     spec: VariantGrid,
     restrict: list[str] | None = None,
-) -> list[tuple[str, dict[str, Any]]]:
-    """Expand a grid name into ``(variant_name, params)`` pairs.
+) -> list[VariantCell]:
+    """Expand a grid name into :class:`VariantCell` values.
 
     ``"base"`` is the four variants at a single default strength — the corpus axis
     of the epsilon sweep. ``"duplication"`` instead varies the *strength* of each
     duplication phenomenon (how many verbatim copies, how much of the corpus
     overlaps, how often a secret repeats) while epsilon is held fixed; this is the
-    axis RQ1 is about. Duplicates between the two full_duplicate sub-sweeps are
-    removed.
+    axis RQ1 is about. Duplicate corpus configurations are removed.
+
+    **The duplication grid leads with the zero-duplication control.** Every
+    duplicated cell is only interpretable against ``AUC_orig`` at the same pipeline,
+    mode, epsilon and seed; without the control in the same grid — and therefore in
+    the same results file — that subtraction has nothing to subtract.
     """
-    configs: list[tuple[str, dict[str, Any]]] = []
+    configs: list[VariantCell] = []
 
     if grid in {"base", "all"}:
         configs += [
-            ("original", {}),
-            ("full_duplicate", {"duplication_rate": spec.base_dup_rate, "n_copies": spec.base_dup_copies}),
-            ("partial_overlap", {"overlap_rate": spec.base_overlap_rate, "n_hosts": spec.overlap_hosts}),
-            ("canary", {"n_canaries": spec.n_canaries, "n_repeats": spec.base_canary_repeats}),
+            VariantCell("original"),
+            VariantCell(
+                "full_duplicate",
+                {"duplication_rate": spec.base_dup_rate, "n_copies": spec.base_dup_copies},
+                axis="duplication_rate",
+                strength=spec.base_dup_rate,
+            ),
+            VariantCell(
+                "partial_overlap",
+                {"overlap_rate": spec.base_overlap_rate, "n_hosts": spec.overlap_hosts},
+                axis="overlap_rate",
+                strength=spec.base_overlap_rate,
+            ),
+            VariantCell(
+                "canary",
+                {"n_canaries": spec.n_canaries, "n_repeats": spec.base_canary_repeats},
+                axis="canary_n_repeats",
+                strength=spec.base_canary_repeats,
+            ),
         ]
     if grid in {"duplication", "all"}:
         configs += [
-            ("full_duplicate", {"duplication_rate": r, "n_copies": spec.base_dup_copies}) for r in spec.dup_rates
+            VariantCell("original"),
+            *(
+                VariantCell(
+                    "full_duplicate",
+                    {"duplication_rate": r, "n_copies": spec.base_dup_copies},
+                    axis="duplication_rate",
+                    strength=r,
+                )
+                for r in spec.dup_rates
+            ),
+            *(
+                VariantCell(
+                    "full_duplicate",
+                    {"duplication_rate": spec.base_dup_rate, "n_copies": c},
+                    axis="n_copies",
+                    strength=c,
+                )
+                for c in spec.dup_copies
+            ),
+            *(
+                VariantCell(
+                    "partial_overlap",
+                    {"overlap_rate": r, "n_hosts": spec.overlap_hosts},
+                    axis="overlap_rate",
+                    strength=r,
+                )
+                for r in spec.overlap_rates
+            ),
+            *(
+                VariantCell(
+                    "canary",
+                    {"n_canaries": spec.n_canaries, "n_repeats": n},
+                    axis="canary_n_repeats",
+                    strength=n,
+                )
+                for n in spec.canary_repeats
+            ),
         ]
-        configs += [
-            ("full_duplicate", {"duplication_rate": spec.base_dup_rate, "n_copies": c}) for c in spec.dup_copies
-        ]
-        configs += [("partial_overlap", {"overlap_rate": r, "n_hosts": spec.overlap_hosts}) for r in spec.overlap_rates]
-        configs += [("canary", {"n_canaries": spec.n_canaries, "n_repeats": n}) for n in spec.canary_repeats]
 
     if restrict:
         wanted = set(restrict)
-        configs = [c for c in configs if c[0] in wanted]
+        configs = [c for c in configs if c.name in wanted]
 
-    deduped: list[tuple[str, dict[str, Any]]] = []
+    deduped: list[VariantCell] = []
     seen: set[str] = set()
-    for name, params in configs:
-        key = f"{name}:{param_str(params)}"
-        if key not in seen:
-            seen.add(key)
-            deduped.append((name, params))
+    for cell in configs:
+        if cell.key() not in seen:
+            seen.add(cell.key())
+            deduped.append(cell)
     return deduped
 
 
+def grid_from_args(args: Any) -> VariantGrid:
+    """Build a :class:`VariantGrid` from parsed CLI arguments.
+
+    Shared by every runner so the three sweeps expand the same grid from the same
+    flags. A runner that builds its own ``VariantGrid()`` silently ignores the
+    ``--dup-rates`` / ``--overlap-rates`` the user passed it.
+    """
+    spec = VariantGrid()
+    return VariantGrid(
+        dup_rates=parse_floats(getattr(args, "dup_rates", None) or "") or spec.dup_rates,
+        dup_copies=parse_ints(getattr(args, "dup_copies", None) or "") or spec.dup_copies,
+        overlap_rates=parse_floats(getattr(args, "overlap_rates", None) or "") or spec.overlap_rates,
+        canary_repeats=parse_ints(getattr(args, "canary_repeats", None) or "") or spec.canary_repeats,
+        base_dup_rate=getattr(args, "base_dup_rate", spec.base_dup_rate),
+        base_dup_copies=getattr(args, "base_dup_copies", spec.base_dup_copies),
+        base_overlap_rate=getattr(args, "base_overlap_rate", spec.base_overlap_rate),
+        overlap_hosts=getattr(args, "overlap_hosts", spec.overlap_hosts),
+        base_canary_repeats=getattr(args, "base_canary_repeats", spec.base_canary_repeats),
+        n_canaries=getattr(args, "n_canaries", spec.n_canaries),
+    )
+
+
 def make_variant(name: str, params: dict[str, Any], seed: int) -> Any:
-    if name == "original":
-        return OriginalVariant()
-    if name == "full_duplicate":
-        return FullDuplicateVariant(seed=seed, **params)
-    if name == "partial_overlap":
-        return PartialOverlapVariant(seed=seed, **params)
-    if name == "canary":
-        return CanaryInjectionVariant(seed=seed, **params)
-    raise ValueError(f"Unknown variant: {name}")
+    """Build one dataset variant by name, from the single registry in ``datasets.variants``."""
+    try:
+        cls = VARIANTS[name]
+    except KeyError:
+        raise ValueError(f"Unknown variant: {name!r}; known: {sorted(VARIANTS)}") from None
+    return cls(seed=seed, **params)
+
+
+def make_variant_cell(cell: VariantCell, seed: int) -> Any:
+    """Build the variant described by ``cell``."""
+    return make_variant(cell.name, cell.params, seed)
 
 
 def truncate_doc(doc: Document, max_chars: int) -> Document:
@@ -271,12 +396,26 @@ class CheckpointedRun:
     atomically after every cell. Per-target rows go to ``predictions.jsonl``
     instead, because at sweep scale (hundreds of cells x hundreds of targets)
     keeping them in the metrics file makes it too large to re-read on resume.
+
+    Several commands may deliberately share one output directory — an epsilon sweep
+    and a duplication sweep must land in the same file for their cells to be
+    comparable at all. Cell keys carry the full configuration, so shared cells are
+    skipped rather than re-run, and each command's ``meta`` is kept in
+    ``meta_history`` instead of being overwritten by the next one.
+
+    ``results.csv`` and ``report.md`` are refreshed after every cell, not only at the
+    end. A multi-day sweep that only produced readable output on completion would be
+    unmonitorable for its entire duration, and rsyncing a half-finished run would
+    yield nothing but raw JSON. Set :attr:`report_fn` to a callable returning the
+    rendered report to enable the ``report.md`` half.
     """
 
     def __init__(self, output_dir: Path, meta: dict[str, Any], csv_fields: list[str]) -> None:
         self.output_dir = output_dir
         self.meta = meta
         self.csv_fields = csv_fields
+        self.report_fn: Callable[[], str] | None = None
+        self.meta_history: list[dict[str, Any]] = []
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.results_path = output_dir / "results.json"
         self.predictions_path = output_dir / "predictions.jsonl"
@@ -287,6 +426,10 @@ class CheckpointedRun:
                 saved = json.loads(self.results_path.read_text(encoding="utf-8"))
                 self.rows = saved.get("results", [])
                 self.done = {r["cell"] for r in self.rows}
+                self.meta_history = list(saved.get("meta_history", []))
+                previous = saved.get("meta")
+                if previous and previous != meta and previous not in self.meta_history:
+                    self.meta_history.append(previous)
                 logger.info("Checkpoint: %d cells already done — resuming", len(self.done))
             except Exception:
                 logger.warning("Could not read checkpoint at %s; starting fresh", self.results_path)
@@ -302,17 +445,35 @@ class CheckpointedRun:
             with self.predictions_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"cell": row["cell"], "predictions": predictions}, ensure_ascii=False) + "\n")
         tmp = self.results_path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"meta": self.meta, "results": self.rows}, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        payload = {"meta": self.meta, "meta_history": self.meta_history, "results": self.rows}
+        tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(self.results_path)
+        self._write_derived()
 
-    def finalise(self, report: str) -> None:
-        with (self.output_dir / "results.csv").open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=self.csv_fields, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(self.rows)
-        (self.output_dir / "report.md").write_text(report, encoding="utf-8")
+    def _write_derived(self) -> None:
+        """Rewrite ``results.csv`` and ``report.md`` from the rows held so far.
+
+        Both are cheap next to a cell (a few hundred rows of text against minutes of
+        GPU work), so they are rewritten every time rather than on an interval — that
+        keeps ``rsync`` of a live run useful and removes "how stale is this" as a
+        question. Rendering is wrapped: a formatting bug in a report must not lose a
+        finished cell that has already been written to ``results.json``.
+        """
+        try:
+            with (self.output_dir / "results.csv").open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(fh, fieldnames=self.csv_fields, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(self.rows)
+            if self.report_fn is not None:
+                (self.output_dir / "report.md").write_text(self.report_fn(), encoding="utf-8")
+        except Exception:
+            logger.exception("Could not refresh results.csv/report.md; results.json is unaffected")
+
+    def finalise(self, report: str | None = None) -> None:
+        """Write the final ``results.csv`` and ``report.md``."""
+        if report is not None:
+            self.report_fn = lambda: report  # type: ignore[assignment,return-value]
+        self._write_derived()
 
 
 def seeded_sample(items: list[Document], k: int, seed: int) -> list[Document]:

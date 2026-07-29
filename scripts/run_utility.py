@@ -46,13 +46,13 @@ from dp_rag_eval.pipelines import Embedder, load_generator, resolve_device
 from dp_rag_eval.runner.sweep import (
     ALL_PIPELINES,
     NON_PRIVATE,
+    VARIANT_COLUMNS,
     CheckpointedRun,
     PipelineParams,
-    VariantGrid,
     build_pipeline,
     eps_label,
-    make_variant,
-    param_str,
+    grid_from_args,
+    make_variant_cell,
     parse_floats,
     parse_ints,
     parse_strs,
@@ -64,8 +64,7 @@ logger = logging.getLogger("run_utility")
 
 CSV_FIELDS = [
     "pipeline",
-    "variant",
-    "params",
+    *VARIANT_COLUMNS,
     "epsilon",
     "realized_epsilon",
     "realized_delta",
@@ -88,7 +87,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-dir", type=Path, default=Path("runs/utility"), help="Where to write results")
     p.add_argument("--pipelines", default=",".join(ALL_PIPELINES), help="Comma-separated: naive,koga,grislain")
 
-    p.add_argument("--generator", default="Qwen/Qwen2.5-0.5B-Instruct", help="HF causal-LM id (shared)")
+    p.add_argument(
+        "--generator",
+        default="Qwen/Qwen3.5-9B",
+        help="HF causal-LM id (shared). The default is the model the matrix is run on; pass a "
+        "small one (e.g. Qwen/Qwen2.5-0.5B-Instruct) with --device cpu for a local dry run.",
+    )
     p.add_argument("--embedder", default="sentence-transformers/all-MiniLM-L6-v2", help="HF embedding model id")
     p.add_argument("--device", default=None, help="cpu / cuda (auto-detected if unset)")
     p.add_argument("--dtype", default=None, help="bfloat16 / float16 / float32")
@@ -105,6 +109,16 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--variant-grid", choices=["base", "duplication", "all"], default="base")
     p.add_argument("--variants", default=None, help="Restrict the grid to these variant names")
+    p.add_argument("--dup-rates", default="0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9", help="full_duplicate rate sweep")
+    p.add_argument("--dup-copies", default="1,2,3,5,10", help="full_duplicate extra-copies sweep")
+    p.add_argument("--overlap-rates", default="0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9", help="partial_overlap sweep")
+    p.add_argument("--canary-repeats", default="1,2,5,10", help="canary n_repeats sweep")
+    p.add_argument("--base-dup-rate", type=float, default=0.3)
+    p.add_argument("--base-dup-copies", type=int, default=1)
+    p.add_argument("--base-overlap-rate", type=float, default=0.3)
+    p.add_argument("--overlap-hosts", type=int, default=3)
+    p.add_argument("--base-canary-repeats", type=int, default=1)
+    p.add_argument("--n-canaries", type=int, default=10)
 
     p.add_argument(
         "--n-split",
@@ -178,7 +192,7 @@ def main() -> None:
     pipeline_names = parse_strs(args.pipelines)
     epsilons = parse_floats(args.epsilons)
     seeds = parse_ints(args.seeds)
-    variants = variant_configs(args.variant_grid, VariantGrid(), parse_strs(args.variants or "") or None)
+    variants = variant_configs(args.variant_grid, grid_from_args(args), parse_strs(args.variants or "") or None)
 
     if args.delta >= 1.0 / max(args.corpus_size, 1):
         logger.warning(
@@ -213,8 +227,13 @@ def main() -> None:
         retrieval_share=args.retrieval_share,
         auto_n_split_cap=args.auto_n_split_cap,
     )
+    total_cells = (
+        len(seeds) * len(variants) * sum(1 if name in NON_PRIVATE else len(epsilons) for name in pipeline_names)
+    )
+
     meta = {
         "task": "HealthCareMagic patient question -> doctor reply",
+        "planned_cells": total_cells,
         "generator": args.generator,
         "embedder": args.embedder,
         "device": device,
@@ -228,6 +247,14 @@ def main() -> None:
         "n_split": args.n_split,
     }
     run = CheckpointedRun(args.output_dir, meta, CSV_FIELDS)
+    run.report_fn = lambda: render_markdown(run.rows, meta)
+    logger.info(
+        "Planned: %d cells (%d seeds x %d variants x %d epsilons)",
+        total_cells,
+        len(seeds),
+        len(variants),
+        len(epsilons),
+    )
 
     generator, tokenizer = load_generator(args.generator, device, dtype=args.dtype)
     embedder = Embedder(args.embedder, device)
@@ -246,15 +273,16 @@ def main() -> None:
         queries = random.Random(seed).sample(answerable, min(args.n_queries, len(answerable)))
         logger.info("[seed %d] %d evaluation questions over %d documents", seed, len(queries), len(base))
 
-        for variant_name, variant_params in variants:
-            corpus = make_variant(variant_name, variant_params, seed).apply(base)
+        for cell_spec in variants:
+            variant_columns = cell_spec.columns()
+            corpus = make_variant_cell(cell_spec, seed).apply(base)
 
             for epsilon in epsilons:
                 target = PrivacyTarget(epsilon=epsilon, delta=args.delta, n_tokens=args.n_tokens)
                 for name in pipeline_names:
                     if name in NON_PRIVATE and target.is_private:
                         continue
-                    cell = f"{name}|{variant_name}|{param_str(variant_params)}|{target.label()}|seed={seed}"
+                    cell = f"{name}|{cell_spec.name}|{variant_columns['params']}|{target.label()}|seed={seed}"
                     if run.is_done(cell):
                         continue
 
@@ -262,8 +290,7 @@ def main() -> None:
                     row: dict[str, Any] = {
                         "cell": cell,
                         "pipeline": name,
-                        "variant": variant_name,
-                        "params": param_str(variant_params),
+                        **variant_columns,
                         "epsilon": eps_label(epsilon),
                         "seed": seed,
                         "n_indexed": len(corpus),
@@ -319,8 +346,9 @@ def main() -> None:
                         logger.error("FAILED %s: %s\n%s", cell, exc, traceback.format_exc())
                     row["seconds"] = time.perf_counter() - start
                     run.record(row, predictions)
+                    logger.info("Checkpoint saved (%d/%d cells)", len(run.done), total_cells)
 
-    run.finalise(render_markdown(run.rows, meta))
+    run.finalise()
 
     print()
     for r in run.rows:
