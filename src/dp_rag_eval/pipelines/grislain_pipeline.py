@@ -359,23 +359,17 @@ class GrislainPipeline:
         first_log_probs = torch.log_softmax(first_aggregated.float() / temperature, dim=-1)
 
         # Rewinding the cache to the prompt is what makes scoring N candidates cost one
-        # prefill instead of N. `hasattr(cache, "crop")` is not enough to decide that:
-        # from transformers 5.x the method exists but raises unless past-state recording
-        # was switched on first, so probe for the real capability and only then keep the
-        # fast path. Getting this wrong is silent at import and loud only mid-sweep.
+        # prefill instead of N — at --n-distractors 255 that is the difference between
+        # minutes and hours per canary cell.
+        #
+        # Two transformers 5.x details, both of which used to disable this silently:
+        # rewinding requires `activate_past_recording()` first, and the rewind is
+        # expressed as "remove k tokens" (a negative argument), not "truncate to length
+        # k". Qwen3.5's linear-attention layers reject the positive form outright, and
+        # the plain `hasattr(cache, "crop")` check could not see either problem.
         reusable = hasattr(prefix_cache, "crop")
         if reusable and hasattr(prefix_cache, "activate_past_recording"):
             prefix_cache.activate_past_recording()
-        if reusable:
-            try:
-                # Cropping to the length it already has is a no-op, so this asks "will
-                # crop work?" without changing anything. Answering it here costs one
-                # call; answering it on the first multi-token candidate would abort a
-                # cell hours into a sweep.
-                prefix_cache.crop(prompt_len)
-            except Exception as exc:  # noqa: BLE001 - any failure means the fast path is unusable
-                logger.warning("Prefix-cache rewind unavailable (%s); scoring candidates the slow way", exc)
-                reusable = False
 
         results: list[float] = []
         for completion in completions:
@@ -403,7 +397,18 @@ class GrislainPipeline:
                         past_key_values=prefix_cache,
                         use_cache=True,
                     )
-                    prefix_cache.crop(prompt_len)
+                    try:
+                        # Negative: drop exactly the completion tokens just appended,
+                        # leaving the prompt prefix for the next candidate.
+                        prefix_cache.crop(-n_completion)
+                    except Exception as exc:  # noqa: BLE001 - the logits above are still valid
+                        # The cache now holds this candidate's tokens and cannot be
+                        # rewound, so it must not be reused; this candidate's result is
+                        # unaffected and the rest fall back to re-reading the prompt.
+                        logger.warning(
+                            "Prefix-cache rewind failed (%s); scoring the remaining candidates the slow way", exc
+                        )
+                        reusable = False
                 else:
                     # Older cache objects cannot be rewound; fall back to re-reading the
                     # prompt. Still one forward per candidate instead of one per token.
