@@ -352,8 +352,8 @@ the non-private baseline, which reflects the free-text corpus rather than DP.
 
 Every sweep refreshes `results.json`, `results.csv` **and** `report.md` after each
 finished cell, so a run in progress is readable at any moment — you never have to
-wait for it to complete, and `rsync` of a half-finished run gives real tables rather
-than raw JSON.
+wait for it to complete, and copying a half-finished run down gives real tables
+rather than raw JSON.
 
 **Progress, without attaching to tmux.** Attaching is how a sweep gets killed by a
 stray Ctrl-C, so prefer this:
@@ -386,15 +386,40 @@ Limited-Domain cutoff. `ERROR` cells and their most recent traceback line show u
 here too; the sweep keeps going past those by design, so nothing else surfaces them.
 
 **Pull results down as you go**, not only at the end — this doubles as insurance
-against losing the pod:
+against losing the pod.
+
+**Use the pod's direct TCP endpoint, not `ssh.runpod.io`.** RunPod's SSH proxy
+refuses `scp`, `sftp` and therefore `rsync` (`subsystem request failed on channel
+0`); it also ignores an exec-mode command and forces an interactive shell. The
+direct endpoint behaves like normal SSH. Both values are in the pod's own
+environment:
+
+```bash
+# on the pod
+echo "$RUNPOD_PUBLIC_IP" "$RUNPOD_TCP_PORT_22"
+```
+
+Do not `env | grep RUNPOD` to find them: RunPod injects `RUNPOD_API_KEY` into the
+same namespace, and that key controls the whole account.
 
 ```bash
 # from your laptop, every so often
-rsync -avz --exclude predictions.jsonl pod:/workspace/DPRAG/runs/ ./runs/
+POD="root@<RUNPOD_PUBLIC_IP>"; PORT=<RUNPOD_TCP_PORT_22>
+
+# rsync if you have it (Git Bash on Windows does not ship it)
+rsync -avz -e "ssh -p $PORT" --exclude predictions.jsonl "$POD:/workspace/DPRAG/runs/" ./runs/
+
+# scp otherwise — always available
+scp -P "$PORT" -r "$POD:/workspace/DPRAG/runs" ./
 ```
 
 `predictions.jsonl` is excluded because it is by far the largest file and is not
-needed for any table; drop the flag when you want the per-target rows.
+needed for any table; drop the exclusion when you want the per-target rows. `scp -r`
+has no exclusion, so pull a single run directory rather than all of `runs/` if the
+prediction files have grown.
+
+Simplest of all for a quick look: ask the bot. `/report` and `/csv` send the current
+files to your phone and need no SSH at all.
 
 **Get told when it stops.** Chain the notifier onto any long command — `;` not `&&`,
 so it fires on failure too, which is the case you actually care about:
