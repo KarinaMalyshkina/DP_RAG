@@ -233,11 +233,21 @@ this script — and the `original` control is included so §5c has something to
 difference against.
 
 Cost driver is `--n-distractors`: exposure mode scores `n_distractors + 1`
-candidates per canary. Grislain scores the whole candidate set against one shared
-prompt prefix (the prefix KV cache is computed once), so 255 distractors there
-cost far less than 256 independent queries. Naive and Koga have no such batching —
-if the cell times look bad, they are the reason; drop to `--n-distractors 63`
-(exposure ceiling falls from 8 to 6 bits) rather than cutting canaries.
+candidates per canary, and **on Qwen3.5 every one of them costs a full forward over
+the prompt.**
+
+Grislain is written to score a whole candidate set against one shared prefix, but
+that needs the KV cache rewound between candidates, and Qwen3.5's linear-attention
+layers cannot be rewound: they carry a recurrent state rather than per-token keys
+and values. `completion_logprobs` detects this and falls back to recomputing the
+prompt per candidate — correct, but with none of the saving. Expect a log line
+saying so, and treat all three pipelines as paying full price here. Verified on an
+A6000 by `scripts/verify_optimizations.py` check 1; the fast path is still taken
+automatically on a model whose cache rewinds exactly.
+
+So `--n-distractors 255` costs ~256 forwards per canary on every pipeline. Size the
+canary group from that, and if the cell times look bad drop to `--n-distractors 63`
+(the exposure ceiling falls from 8 to 6 bits) rather than cutting canaries.
 
 ---
 
