@@ -167,11 +167,38 @@ class GrislainPipeline:
         return PrivacyBudget(epsilon=float(composed.get_epsilon_for_delta(self.report_delta)), delta=self.report_delta)
 
     def index(self, documents: list[Document]) -> None:
-        """Build the DP vector store once and precompute document embeddings."""
+        """Build the DP vector store once and precompute document embeddings.
+
+        **Not** via upstream's ``store.add()``. That method is keyed on the text
+        (``if not entry in self.index``) and silently drops an exact repeat, so a
+        corpus of 1000 documents with 300 verbatim duplicates would be indexed as
+        1000 — making the ``full_duplicate`` variant byte-for-byte identical to
+        ``original`` and the whole RQ1 duplication axis vacuous for this pipeline.
+        Observed exactly that way: identical AUC and identical per-target scores
+        across all 500 targets in both variants.
+
+        The privacy unit in this framework is a *document*, so a verbatim copy is a
+        second record and has to occupy a second slot. ``self.index`` is used
+        upstream only for that de-duplication check, never for retrieval, so
+        appending directly is safe; retrieval reads ``store.store`` and
+        ``store.embeddings()``.
+        """
         self._store = self._make_store()
+        store = self._store
         for doc in documents:
-            self._store.add(doc.text)
-        self._store.embeddings()  # force the embedding cache so queries are cheap
+            store.store.append(doc.text)
+            store.index.setdefault(doc.text, len(store.store) - 1)
+        store._embeddings = None  # appended without add(), so drop any stale cache
+
+        # A store that quietly holds fewer records than it was given breaks the
+        # duplication experiment without failing anything, so make it loud.
+        if len(store.store) != len(documents):
+            raise RuntimeError(
+                f"Indexed {len(store.store)} of {len(documents)} documents — the vector store is "
+                "collapsing records. Duplication variants would be silently neutralised; fix the "
+                "store before running."
+            )
+        store.embeddings()  # force the embedding cache so queries are cheap
 
     def answer(self, question: str) -> dict[str, Any]:
         """Answer one query against the indexed corpus and report the privacy budget.
