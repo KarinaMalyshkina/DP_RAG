@@ -31,7 +31,7 @@ Usage:
     uv run python scripts/telegram_bot.py runs/mia_main runs/canary_main
 
     # window is per-run: group 3 cells are slow, canary cells are not
-    uv run python scripts/telegram_bot.py runs/mia_main --stall-minutes 90
+    uv run python scripts/telegram_bot.py runs/mia_main --stall-minutes 300
 """
 
 from __future__ import annotations
@@ -77,8 +77,10 @@ def parse_args() -> argparse.Namespace:
         "--stall-minutes",
         type=float,
         default=60.0,
-        help="Alert when no new cell has been recorded for this long. Set it above the slowest "
-        "expected cell — Koga at eps=4 with 128 voters is the slow one. 0 disables the watchdog.",
+        help="Alert when no new cell has been recorded for this long. A cell is written only "
+        "when it finishes, so this must EXCEED the slowest cell or it fires on every one of "
+        "them. Measured on an A6000: Grislain ~4 min, Koga at eps=4 with 128 voters ~3.5 h. "
+        "0 disables the watchdog.",
     )
     p.add_argument("--poll-seconds", type=int, default=30, help="Telegram long-poll window")
     p.add_argument("--quiet-start", action="store_true", help="Do not announce startup")

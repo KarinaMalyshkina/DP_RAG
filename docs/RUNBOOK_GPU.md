@@ -451,7 +451,7 @@ Telegram, start the bot in its own tmux pane:
 
 ```bash
 tmux new-window -t dprag -n bot
-uv run python scripts/telegram_bot.py runs/mia_main runs/canary_main --stall-minutes 90
+uv run python scripts/telegram_bot.py runs/mia_main runs/canary_main --stall-minutes 300
 ```
 
 | command | what you get |
@@ -463,9 +463,22 @@ uv run python scripts/telegram_bot.py runs/mia_main runs/canary_main --stall-min
 | `/degradation [run]` | recomputes duplicated-vs-control deltas *now* and sends them |
 | `/runs`, `/help` | — |
 
-Set `--stall-minutes` above your slowest expected cell — Koga at ε=4 with 128 voters
-is the one to size against. Below that you will get false alarms; the §1 calibration
-number is what to base it on.
+**`--stall-minutes` must exceed your slowest cell**, because a cell is only written
+when it finishes: the gap between checkpoint writes *is* one cell's duration, so a
+threshold below it alarms on every single cell.
+
+Measured on an A6000 with Qwen3.5-9B at `--targets-per-class 25`, scaled ×10 to the
+production 250:
+
+| cell | measured (25 targets) | at 250 targets | use at least |
+|---|---|---|---|
+| grislain, any ε | 22–24 s | ~4 min | 30 min |
+| koga, ε=inf (plurality vote) | 49 s | ~8 min | 30 min |
+| koga, ε=4 (128 voters) | >21 min | **~3.5 h** | **300 min** |
+
+So `--stall-minutes 90` is right for a Grislain-only sweep and **wrong** the moment
+Koga's finite-ε cells run — it would fire during every one of them. The script's
+default of 60 has the same problem; pass the value deliberately.
 
 **What the watchdog does and does not cover.** It alerts when no new cell has been
 recorded for `--stall-minutes`, which catches the failures that produce no exit code:
