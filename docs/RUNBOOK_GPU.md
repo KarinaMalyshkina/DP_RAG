@@ -100,6 +100,14 @@ starting, not halfway through.
 Watch VRAM in a second pane (`watch -n5 nvidia-smi`). Headroom below ~4 GB means
 `--n-split` or `--top-k` needs lowering; the logit tensor scales with both.
 
+**Run one sweep at a time on one card.** A Grislain sweep sits at ~18 GiB; Koga at
+ε=4 with 128 voters wants ~29 GiB. Together they exceed the 47 GiB card and the
+second process dies with `CUDA out of memory` — observed exactly that way. The
+already-running sweep survived (each cell is checkpointed, and the failure lands in
+the newcomer), but a cell is lost and recorded `status=ERROR`. If you need to test
+something while a sweep runs, use a small `--n-split` and a handful of targets, or
+wait.
+
 ---
 
 ## 2. Group 1 + 2 — baseline (ε=∞) and the fixed-ε sweep
