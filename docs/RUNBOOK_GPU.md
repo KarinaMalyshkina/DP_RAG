@@ -33,6 +33,27 @@ In every new shell afterwards:
 cd /workspace/DPRAG && source .env.gpu
 ```
 
+Fill in your Telegram credentials now, while you are still at the keyboard — they
+are what tells you the sweep died at 03:00 instead of you finding out at breakfast
+having paid for six idle GPU-hours:
+
+```bash
+nano .env.secrets        # bootstrap created it; fill in the two values
+#   export TELEGRAM_BOT_TOKEN=123456:ABC...   from @BotFather
+#   export TELEGRAM_CHAT_ID=987654321         from @userinfobot
+
+source .env.gpu && uv run python scripts/notify.py --text "pod is up" --verbose
+```
+
+**Credentials go in `.env.secrets`, never in `.env.gpu`.** `bootstrap_gpu.sh`
+rewrites `.env.gpu` every time it runs — including the re-run after a pod restart in
+§6 — so anything hand-edited there is lost. `.env.gpu` sources `.env.secrets`, which
+bootstrap creates once and never overwrites. Both are gitignored.
+
+If the test message does not arrive, fix it here. `notify.py` is deliberately unable
+to fail a sweep — with no credentials it warns and exits 0 — so a broken token stays
+silent for the rest of the run.
+
 Then confirm the optimisations behave on the real model — these are the changes
 that fail silently rather than raising:
 
@@ -134,17 +155,29 @@ is the RQ1 axis and the largest group (~26 variant configs).
 
 ```bash
 uv run python scripts/run_attack.py \
-  --generator Qwen/Qwen3.5-9B --output-dir runs/mia_duplication \
+  --generator Qwen/Qwen3.5-9B --output-dir runs/mia_main \
   --variant-grid duplication --epsilons inf,4,16 \
   --n-tokens 32 --delta 1e-6 --modes unified \
   --members 1000 --non-members 1000 --targets-per-class 250 \
   --seeds 42,43,44
 ```
 
-The grid expands to: `full_duplicate` at rates 0.1–0.9 (one extra copy each) and
-at 1/2/3/5/10 copies (rate 0.3); `partial_overlap` at overlap rates 0.1–0.9;
-`canary` at 1/2/5/10 repeats. Override any axis with `--dup-rates`,
-`--dup-copies`, `--overlap-rates`, `--canary-repeats`.
+**`runs/mia_main` on purpose — the same directory as group 2.** Every duplicated
+cell is only interpretable as a difference from the `original` cell at the same
+pipeline, mode, ε and seed, and a difference cannot be computed across two files
+that were never joined. Cells shared with group 2 (the `original` control, base-strength
+`full_duplicate`, ε ∈ {inf,4,16}) are already in the checkpoint and are skipped in
+milliseconds, so this costs nothing extra. Each command's parameters are kept in
+`meta_history` rather than overwritten.
+
+The grid expands to: the `original` control at zero duplication; `full_duplicate` at
+rates 0.1–0.9 (one extra copy each) and at 1/2/3/5/10 copies (rate 0.3);
+`partial_overlap` at overlap rates 0.1–0.9; `canary` at 1/2/5/10 repeats. Override
+any axis with `--dup-rates`, `--dup-copies`, `--overlap-rates`, `--canary-repeats`.
+
+Duplication strength is written as its own numeric columns (`dup_axis`,
+`dup_strength`, `duplication_rate`, `n_copies`, `overlap_rate`, `canary_n_repeats`),
+not only inside the `params` string, so the analysis in §5c joins on typed values.
 
 **This group dominates the budget** — ~26 configs x 3 seeds x the epsilon values,
 and Koga's cells at ε=4 use 128 voters each. Two levers, in this order:
@@ -169,10 +202,35 @@ Separate script, same sweep machinery. `n_repeats` is the number of copies of th
 uv run python scripts/run_canary.py \
   --generator Qwen/Qwen3.5-9B --output-dir runs/canary_main \
   --epsilons inf,4,8,16,32 --n-tokens 32 --delta 1e-6 \
-  --canary-repeats 1,2,5,10 \
+  --canary-repeats 1,2,5,10 --variants original \
   --corpus-size 1000 --n-canaries 20 --n-distractors 255 \
   --modes exposure --seeds 42,43,44
 ```
+
+### The second duplication axis
+
+`--canary-repeats` duplicates the *secret*. `--variant-grid` duplicates the
+*background corpus* around it, using the same grid the membership sweep uses, so
+"duplication rate 0.5" means the same corpus in both experiments. Canary injection
+always runs last, on top of the corpus variant, so verbatim corpus duplication never
+silently multiplies the secret's copy count — the two axes stay separable.
+
+```bash
+uv run python scripts/run_canary.py \
+  --generator Qwen/Qwen3.5-9B --output-dir runs/canary_main \
+  --epsilons inf,8 --n-tokens 32 --delta 1e-6 \
+  --canary-repeats 1 --variant-grid duplication \
+  --dup-rates 0.1,0.5,0.9 --overlap-rates 0.1,0.5,0.9 --dup-copies 1,5 \
+  --corpus-size 1000 --n-canaries 20 --n-distractors 255 \
+  --modes exposure --seeds 42,43,44
+```
+
+**Cross the two axes only deliberately.** The full `duplication` grid is 24 corpus
+variants; crossed with 4 repeat levels, 5 epsilons and 3 seeds that is well over a
+thousand cells. Pin one axis while sweeping the other, as both commands above do.
+`canary` cells from the shared grid are dropped here — injection is unconditional in
+this script — and the `original` control is included so §5c has something to
+difference against.
 
 Cost driver is `--n-distractors`: exposure mode scores `n_distractors + 1`
 candidates per canary. Grislain scores the whole candidate set against one shared
@@ -290,18 +348,159 @@ the non-private baseline, which reflects the free-text corpus rather than DP.
 
 ---
 
+## 5b. Watching a sweep while it runs
+
+Every sweep refreshes `results.json`, `results.csv` **and** `report.md` after each
+finished cell, so a run in progress is readable at any moment — you never have to
+wait for it to complete, and `rsync` of a half-finished run gives real tables rather
+than raw JSON.
+
+**Progress, without attaching to tmux.** Attaching is how a sweep gets killed by a
+stray Ctrl-C, so prefer this:
+
+```bash
+# one look — from the pod, or straight from your laptop
+uv run python scripts/watch_progress.py runs/mia_main
+ssh pod 'cd /workspace/DPRAG && uv run python scripts/watch_progress.py runs/mia_main'
+
+# a live pane next to the sweep
+uv run python scripts/watch_progress.py runs/mia_main runs/canary_main --interval 60
+```
+
+```
+runs/mia_main  [#######.....................] 142/560 (25.4%)
+  status:    OK=131  INFEASIBLE=11
+  pipelines: grislain=78  koga=42  naive=22
+  timing:    3m41s/cell  |  spent 8h02m  |  ETA 25h40m
+  last cell: 2m11s ago
+  FLAGS:
+    ! 3 cells have ld_failure_rate > 0.95: their AUC measures mechanism
+      infeasibility, not privacy — check n_split before using them
+```
+
+**Read the FLAGS block, not the progress bar.** The bar only tells you the sweep is
+moving. The flags are for the failures that do not look like failures — above all
+`ld_failure_rate`, where a Koga cell reports `status=OK` and an AUC of exactly 0.5
+that reads as a successful defence when it means no vote ever cleared the
+Limited-Domain cutoff. `ERROR` cells and their most recent traceback line show up
+here too; the sweep keeps going past those by design, so nothing else surfaces them.
+
+**Pull results down as you go**, not only at the end — this doubles as insurance
+against losing the pod:
+
+```bash
+# from your laptop, every so often
+rsync -avz --exclude predictions.jsonl pod:/workspace/DPRAG/runs/ ./runs/
+```
+
+`predictions.jsonl` is excluded because it is by far the largest file and is not
+needed for any table; drop the flag when you want the per-target rows.
+
+**Get told when it stops.** Chain the notifier onto any long command — `;` not `&&`,
+so it fires on failure too, which is the case you actually care about:
+
+```bash
+uv run python scripts/run_attack.py ... --output-dir runs/mia_main ; \
+  uv run python scripts/notify.py --status $? --label "group 2" \
+    --summary runs/mia_main --file runs/mia_main/report.md
+```
+
+The message carries the same progress block shown above, and `--file` uploads the
+report itself, so a failure notification tells you how far it got, what the flags
+were, and hands you the numbers.
+
+### Asking from your phone
+
+`notify.py` only speaks when spoken to from the shell. To query a running sweep from
+Telegram, start the bot in its own tmux pane:
+
+```bash
+tmux new-window -t dprag -n bot
+uv run python scripts/telegram_bot.py runs/mia_main runs/canary_main --stall-minutes 90
+```
+
+| command | what you get |
+|---|---|
+| `/status` | progress, ETA and flags for every watched run |
+| `/flags` | only the problems |
+| `/report [run]` | `report.md` as a file, current as of the last finished cell |
+| `/csv [run]` | `results.csv` as a file |
+| `/degradation [run]` | recomputes duplicated-vs-control deltas *now* and sends them |
+| `/runs`, `/help` | — |
+
+Set `--stall-minutes` above your slowest expected cell — Koga at ε=4 with 128 voters
+is the one to size against. Below that you will get false alarms; the §1 calibration
+number is what to base it on.
+
+**What the watchdog does and does not cover.** It alerts when no new cell has been
+recorded for `--stall-minutes`, which catches the failures that produce no exit code:
+a wedged CUDA call, a SIGKILLed sweep, a run quietly making no progress. It cannot
+report the pod dying, because the bot dies with it — nothing running on the machine
+can announce the machine's own death. If the bot goes quiet *and* `/status` times
+out, assume the pod is gone and check RunPod directly. A run that reaches its planned
+cell count is treated as complete and never alerts.
+
+Only `TELEGRAM_CHAT_ID` is answered — a bot username is discoverable, so messages
+from any other chat are logged and ignored. File commands are restricted to the run
+directories named on the command line and never accept an arbitrary path.
+
+---
+
+## 5c. Analysis — the degradation report
+
+Everything above produces one number per configuration. This is the step that turns
+those into the RQ1 quantity: how much *worse* the leakage gets when the corpus
+contains duplicates.
+
+```bash
+uv run python scripts/report_degradation.py \
+  --results runs/mia_main --metric auc --metric tpr_at_fpr_01 \
+  --output-dir runs/analysis
+
+uv run python scripts/report_degradation.py \
+  --results runs/canary_main --metric mean_exposure \
+  --output-dir runs/analysis_canary
+```
+
+Each duplicated cell is paired with the `original` cell at the **same** pipeline,
+scoring mode, ε target and seed; the report gives `delta = value − control`,
+`ratio = value / control`, and a mean / std / 95% Student-t interval pooled over the
+seed axis. Outputs: `degradation.md`, `degradation_pairs.csv`,
+`degradation_pooled.csv`.
+
+Pass several `--results` paths to merge directories — rows are deduplicated on the
+cell key, so a base grid and a duplication grid run separately can still be compared.
+Writing them to one directory in the first place (§3) is preferable.
+
+**Read the warnings block at the top of `degradation.md` first.** "no 'original'
+control for …" means a whole group of cells has nothing to be compared against —
+usually a duplication sweep that was pointed at its own output directory. Rows
+recorded `INFEASIBLE` are excluded rather than counted as zero leakage, and the count
+of them is reported.
+
+Pooled rows with `n_seeds = 1` have a mean and `nan` for every spread column. That is
+one replicate, not a reproducible result — do not quote it with an error bar.
+
+---
+
 ## 6. Recovery
 
 | symptom | action |
 |---|---|
 | SSH dropped | `tmux attach -t dprag`; the sweep kept running |
-| pod restarted | re-run `bootstrap_gpu.sh` (weights survive on `/workspace`), then re-issue the same command — finished cells are skipped |
+| pod restarted | re-run `bootstrap_gpu.sh` (weights survive on `/workspace`; `.env.secrets` and your Telegram token survive too), then re-issue the same command — finished cells are skipped. Restart the bot pane as well: it does not come back on its own |
 | CUDA OOM | lower `--n-split`, then `--top-k`, then `--max-doc-chars`. The logit tensor is `batch x vocab (248k)`, so batch size dominates |
 | one cell errors | it is recorded with `status=ERROR` and the sweep continues; the traceback is in the console log and `error` in the CSV |
 | need to redo a cell | delete its row from `results.json` (keyed by `cell`) and re-run the same command |
 
 Never delete `results.json` to "start clean" mid-matrix — that discards every
 finished cell. To rerun from scratch, use a new `--output-dir`.
+
+Note for results produced before 2026-07-29: canary cell keys now carry the corpus
+variant, and result rows carry typed duplication columns. Older canary runs under
+`runs/` will not resume against the new key format, and older rows have no `variant`
+column so `report_degradation.py` cannot pair them. Both only affect the smoke runs
+already in the repo.
 
 ---
 

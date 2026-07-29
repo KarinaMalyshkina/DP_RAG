@@ -249,6 +249,29 @@ Four variants, all deterministic given a seed
 Seeds redraw the member/non-member split as well as the variant randomness, so a
 seed is a replicate of the whole experiment rather than of the noise alone.
 
+**`original` is a control in the arithmetic sense, not only the design sense.** Every
+duplication grid leads with it, so the zero-duplication point is in the same results
+file as the cells it is the reference for. A duplicated cell's result is reported as
+`AUC_dup − AUC_orig` and `AUC_dup / AUC_orig` at matched pipeline, scoring mode,
+epsilon target and seed — this is the gap §2 calls the point of the duplication
+variants, and `scripts/report_degradation.py` computes it. Strength is written to
+typed columns (`dup_axis`, `dup_strength`, `duplication_rate`, `n_copies`,
+`overlap_rate`, `canary_n_repeats`) so cells pair without parsing a label.
+
+**The canary experiment composes two of these variants.** `scripts/run_canary.py`
+applies the corpus variant first and injects canaries on top, so `n_repeats` measures
+duplication *of the secret* while the corpus variant measures duplication *of the
+background*. Injecting first would let verbatim corpus duplication replicate canary
+hosts, making the effective copy count a product of the two axes and confounding
+them. Because the exposure metric is undefined with no canary present
+(`attacks/canary.py`), the canary runner has no no-canary arm; the with/without
+contrast is available under the membership metric instead — see
+[`docs/decisions-needed.md`](decisions-needed.md) §2.
+
+Seed pooling (mean, sample std, 95% Student-t interval) happens in the same reporter.
+A single seed yields a mean and no interval, and is reported that way rather than as
+a zero-variance result.
+
 ---
 
 ## 8. Adding a DP-RAG system
