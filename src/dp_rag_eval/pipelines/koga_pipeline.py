@@ -120,6 +120,13 @@ class KogaPipeline:
         # like "DP worked" but is really "the configuration was infeasible".
         self.ld_draws = 0
         self.ld_failures = 0
+        # Per-step record of the votes actually cast, appended by answer(). The failure
+        # rate alone says how often the selection refused but not *why*: whether the
+        # voters were one vote short of the cutoff or nowhere near it, and whether
+        # refusal comes at the first step or only once the answer runs long. Both
+        # follow from the leading vote count, which is otherwise never recorded.
+        self.vote_trace: list[dict[str, Any]] = []
+        self.trace_top_k = 5
         self._texts: list[str] = []
         self._doc_embeddings: Any = None
         self._yes_ids: list[int] | None = None
@@ -227,11 +234,38 @@ class KogaPipeline:
     def reset_ld_stats(self) -> None:
         self.ld_draws = 0
         self.ld_failures = 0
+        self.vote_trace = []
 
     @property
     def ld_failure_rate(self) -> float:
         """Fraction of DP vote draws that produced no token. NaN before any draw."""
         return self.ld_failures / self.ld_draws if self.ld_draws else float("nan")
+
+    def vote_summary(self) -> dict[str, float]:
+        """Aggregate the vote trace into the few numbers worth putting in a results row.
+
+        ``first_step_lead_mean`` against :meth:`ld_threshold` is the diagnosis: a mean
+        well below the cutoff means the voters never came close to agreeing, and no
+        amount of extra budget at this answer length would have helped, whereas a mean
+        just below it means the voter count was the binding constraint.
+        ``refusal_step_mean`` separates "refused immediately" from "ran for a while
+        and then stopped", which decide whether an answer is empty or merely short.
+        """
+        if not self.vote_trace:
+            return {}
+        first = [r["max_votes"] for r in self.vote_trace if r["step"] == 0]
+        refusals = [r["step"] for r in self.vote_trace if r["refused"]]
+        summary = {
+            "steps_recorded": float(len(self.vote_trace)),
+            "max_votes_mean": sum(r["max_votes"] for r in self.vote_trace) / len(self.vote_trace),
+            "vote_threshold": self.ld_threshold(),
+        }
+        if first:
+            summary["first_step_lead_mean"] = sum(first) / len(first)
+        if refusals:
+            summary["refusal_step_mean"] = sum(refusals) / len(refusals)
+            summary["refused_at_first_step"] = float(sum(1 for s in refusals if s == 0)) / len(refusals)
+        return summary
 
     def _make_dp_engine(self) -> LDGumbelMechanism:
         """A fresh LD-Gumbel mechanism with its own accountant."""
@@ -281,6 +315,26 @@ class KogaPipeline:
         )
         return kept[:, -1, :], attention_mask, output.past_key_values
 
+    def _record_votes(self, step: int, next_tokens: torch.Tensor, *, refused: bool) -> None:
+        """Append one step's vote distribution to :attr:`vote_trace`.
+
+        Only the leading few counts are kept. The histogram is over the whole
+        vocabulary but has at most ``n_split`` non-zero entries, and the cutoff is
+        compared against the leader alone, so the tail carries no information worth
+        the space at sweep scale.
+        """
+        counts = torch.bincount(next_tokens, minlength=self.vocab_size)
+        top = torch.topk(counts, min(self.trace_top_k, counts.numel())).values.tolist()
+        self.vote_trace.append(
+            {
+                "step": step,
+                "n_voters": int(next_tokens.numel()),
+                "max_votes": int(top[0]) if top else 0,
+                "top_votes": [int(v) for v in top],
+                "refused": bool(refused),
+            }
+        )
+
     @torch.no_grad()
     def answer(self, query: str, seed: int = 42) -> dict[str, Any]:
         """Vote token-by-token under the LD-Gumbel mechanism on the indexed corpus."""
@@ -296,12 +350,24 @@ class KogaPipeline:
         next_logits, attention_mask, cache = self._voter_prefill(prompts)
         n_voters = next_logits.shape[0]
 
-        for _ in range(self.max_new_tokens):
+        for step in range(self.max_new_tokens):
             # temperature=0 => each voter's vote is its argmax next token. Voting is a
             # tiny histogram operation, so it runs on CPU to avoid per-draw GPU launches.
             next_tokens = torch.argmax(next_logits, dim=-1).cpu()
             with _quiet_votes():
                 token = self._vote(next_tokens, dp_engine)
+            # Recorded on both paths. With the mechanism off the run never stops early,
+            # so all max_new_tokens steps are observed and the agreement profile can be
+            # measured along a whole answer — under DP only the steps before the first
+            # refusal ever happen.
+            self._record_votes(step, next_tokens, refused=token is None)
+            if dp_engine is not None:
+                # Counted here rather than inside the mechanism because the closed-form
+                # membership score never reaches this path, which is why the failure
+                # rate read NaN for every cell of the generation matrix.
+                self.ld_draws += 1
+                if token is None:
+                    self.ld_failures += 1
             if token is None:  # LD failure or budget exhausted -> baseline stops
                 exit_status = "budget_exhausted_or_ld_failed"
                 break
@@ -336,6 +402,8 @@ class KogaPipeline:
             "n_retrieved": len(retrieved),
             "n_voters": self.n_split,
             "n_dp_tokens": 0 if dp_engine is None else dp_engine.total_queries,
+            "n_generated": len(generated),
+            "vote_threshold": self.ld_threshold(),
         }
 
     def _ensure_yes_no_ids(self) -> None:
@@ -351,8 +419,20 @@ class KogaPipeline:
         return next_logits
 
     @torch.no_grad()
-    def _ld_yes_probability(self, next_tokens: torch.Tensor) -> float:
-        """Exact P(the LD-Gumbel selection returns a 'Yes' token), no sampling.
+    def _ld_yes_log_probability(self, next_tokens: torch.Tensor) -> float:
+        """Exact log P(the LD-Gumbel selection returns a 'Yes' token), no sampling.
+
+        **Returned as a logarithm, and that is not a cosmetic choice.** The selection
+        distribution is a softmax over ``eps_step * value``, and the reject candidate
+        sits ``1 + log(2/delta_step)/eps_step`` votes above the field — roughly 103
+        votes at eps=5 over a 32-token answer. A target whose Yes tokens are far below
+        that has a genuine probability around ``exp(-eps_step * 103)``, which for the
+        larger budgets is below 1e-300 and rounds to exactly zero in float64. Returning
+        the probability threw that away: 76-81%% of targets scored an identical 0.0,
+        AUC was computed over a mostly-tied vector, and the tie mass dragged every cell
+        toward 0.5 by an amount that varied from cell to cell. The logarithm is a
+        monotone transform, so it leaves AUC and TPR@FPR unchanged wherever the
+        probability survived, and recovers the ranking wherever it did not.
 
         ``LDGumbelMechanism.get_top1`` adds independent ``Gumbel(0, 1/eps)`` noise to
         the top ``k_bar`` vote counts *and* to a reject candidate at
@@ -377,7 +457,8 @@ class KogaPipeline:
 
         The ``output_rand_if_fail`` branches upstream are unreachable in this
         framework's regime (``k_bar = n_split`` is far below the vocabulary size), so
-        a reject is a plain failure and contributes no Yes mass.
+        a reject is a plain failure and contributes no Yes mass — reported as ``-inf``,
+        which ranks below every finite score, as a zero probability should.
         """
         counts = torch.bincount(next_tokens.flatten(), minlength=self.vocab_size).to(torch.float64)
         k_bar = min(self.n_split, self.vocab_size)
@@ -392,31 +473,28 @@ class KogaPipeline:
 
         yes_ids = torch.tensor(sorted(self._yes_ids or []), dtype=sorted_idx.dtype)
         if yes_ids.numel() == 0:
-            return 0.0
+            return float("-inf")
         is_yes = torch.isin(sorted_idx[:k_bar], yes_ids)
         if not bool(is_yes.any()):
-            return 0.0
-        return float(torch.exp(torch.logsumexp(log_probs[:k_bar][is_yes], dim=0)))
+            return float("-inf")
+        return float(torch.logsumexp(log_probs[:k_bar][is_yes], dim=0))
 
-    def membership_score(self, query: str, seed: int | None = None) -> float:
-        """P(the system answers 'Yes'), computed exactly from the LD-Gumbel selection.
+    def membership_score_log(self, query: str, seed: int | None = None) -> float:
+        """log P(the system answers 'Yes') — the estimand, on the scale that survives.
 
-        The framework's common estimand, the same one Grislain reports. The vote is
-        drawn once from the voters, then :meth:`_ld_yes_probability` reads the
-        selection distribution off the histogram in closed form — the mechanism's
-        output distribution *is* available analytically, so nothing is sampled.
-        :meth:`membership_score_sampled` is the Monte Carlo version, kept to validate
-        that the two agree.
+        Same quantity as :meth:`membership_score`, and the one the attack should rank
+        on. The probability itself spans roughly ``exp(-eps_step * 103)`` to 1 across
+        targets, so at the wider budgets most of that range lies below float64 and
+        collapses to a single tied value; the logarithm is monotone, so every metric
+        built on ranks is unchanged where the probability survived and is recovered
+        where it did not.
 
-        A rejected selection (the Limited-Domain candidate winning) contributes no
-        Yes mass, so the score falls towards zero as epsilon shrinks. That is the
-        intended behaviour: strong DP should erase the signal, not rescale it.
-
-        Returns a value in ``[0, 1]``. With ``dp=False`` there is no noise and the
-        plurality vote is deterministic, so the honest value is 0.0 or 1.0 — a
-        mechanism that emits a hard vote has no finer answer, and TPR@FPR is not
-        resolvable at that point for this pipeline. Read the epsilon = infinity Koga
-        cell as a binary reference, not as a continuous score.
+        With ``dp=False`` the plurality vote is deterministic and the honest value is
+        ``0.0`` (certainty) or ``-inf`` (impossibility). Measurement on this corpus
+        gives ``-inf`` for every target — the plurality winner is never a Yes token —
+        so the non-private cell carries no membership signal at all. That is a
+        property of the vote, not an artefact of the scale, and it is why the
+        epsilon = infinity Koga cell must stay out of the metric tables.
         """
         if seed is not None:
             torch.manual_seed(seed)
@@ -427,8 +505,25 @@ class KogaPipeline:
         yes_ids = set(self._yes_ids or [])
         if not self.dp:
             token = self._vote(next_tokens, None)
-            return 1.0 if token in yes_ids else 0.0
-        return self._ld_yes_probability(next_tokens)
+            return 0.0 if token in yes_ids else float("-inf")
+        return self._ld_yes_log_probability(next_tokens)
+
+    def membership_score(self, query: str, seed: int | None = None) -> float:
+        """P(the system answers 'Yes'), computed exactly from the LD-Gumbel selection.
+
+        The framework's common estimand, the same one Grislain reports. The vote is
+        drawn once from the voters, then :meth:`_ld_yes_log_probability` reads the
+        selection distribution off the histogram in closed form — the mechanism's
+        output distribution *is* available analytically, so nothing is sampled.
+        :meth:`membership_score_sampled` is the Monte Carlo version, kept to validate
+        that the two agree.
+
+        **Underflows for most targets, by construction rather than by defect**: see
+        :meth:`membership_score_log`, which is what anything rank-based must use. This
+        stays because a probability is what the estimand is defined as, and because
+        the agreement check against the sampled version needs the same scale.
+        """
+        return math.exp(self.membership_score_log(query, seed))
 
     @torch.no_grad()
     def membership_score_sampled(self, query: str, n_samples: int | None = None) -> float:

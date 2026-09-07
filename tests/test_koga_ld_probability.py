@@ -31,7 +31,7 @@ class _Bare:
         self.dp_delta = delta
         self._yes_ids = yes_ids
 
-    yes_probability = KogaPipeline._ld_yes_probability
+    log_yes_probability = KogaPipeline._ld_yes_log_probability
 
 
 def simulate(votes: torch.Tensor, vocab: int, n_split: int, eps: float, delta: float, yes: list[int], draws: int):
@@ -50,7 +50,19 @@ def simulate(votes: torch.Tensor, vocab: int, n_split: int, eps: float, delta: f
 
 
 def score(votes, *, vocab=1000, n_split=16, eps=1.0, delta=1e-6, yes=(7,)) -> float:
-    return _Bare(vocab, n_split, eps, delta, list(yes)).yes_probability(torch.tensor(votes))
+    """P(Yes) on the probability scale, for tests written against probabilities.
+
+    The helper now returns a logarithm — the probability spans hundreds of orders of
+    magnitude and float64 cannot hold the small end — so these tests exponentiate it
+    back. That is safe here: the cases are constructed with a few voters and a wide
+    epsilon, where the value is nowhere near underflow.
+    """
+    log_p = _Bare(vocab, n_split, eps, delta, list(yes)).log_yes_probability(torch.tensor(votes))
+    return math.exp(log_p)
+
+
+def log_score(votes, *, vocab=1000, n_split=16, eps=1.0, delta=1e-6, yes=(7,)) -> float:
+    return _Bare(vocab, n_split, eps, delta, list(yes)).log_yes_probability(torch.tensor(votes))
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +77,7 @@ def test_closed_form_matches_a_direct_simulation():
     vocab, n_split, eps, delta, yes = 200, 8, 4.0, 1e-3, [7]
     votes = torch.tensor([7] * 6 + [3, 5])
 
-    exact = _Bare(vocab, n_split, eps, delta, yes).yes_probability(votes)
+    exact = math.exp(_Bare(vocab, n_split, eps, delta, yes).log_yes_probability(votes))
     sampled = simulate(votes, vocab, n_split, eps, delta, yes, draws=40000)
 
     assert exact == pytest.approx(sampled, abs=0.01)
@@ -108,21 +120,28 @@ def test_a_yes_token_with_no_votes_keeps_a_tiny_but_real_chance():
     them can win. A Yes token sitting in one of those slots therefore has a nonzero
     selection probability even with no votes at all. Bounding how many such tokens
     compete is precisely what the limited domain is for.
-    """
-    no_votes = score([3] * 16)
-    with_votes = score([7] * 8 + [3] * 8)
 
-    assert 0.0 < no_votes < 1e-6
+    Asserted on the log scale, which is where the claim can actually be checked.
+    On the probability scale this read ``0.0 < no_votes`` and passed or failed with
+    the platform: the value is small enough that one machine returned a denormal and
+    another returned exactly zero. A finite logarithm says "possible but unlikely"
+    on every machine, which is what the mechanism guarantees.
+    """
+    no_votes = log_score([3] * 16)
+    with_votes = log_score([7] * 8 + [3] * 8)
+
+    assert math.isfinite(no_votes)
+    assert no_votes < math.log(1e-6)
     assert with_votes > no_votes
 
 
 def test_zero_when_no_yes_token_is_inside_the_domain():
     # k_bar=2 leaves only the two most-voted tokens in the domain, neither of them 7.
-    assert score([3] * 8 + [5] * 8, n_split=2) == 0.0
+    assert log_score([3] * 8 + [5] * 8, n_split=2) == float("-inf")
 
 
 def test_no_yes_token_ids_gives_zero():
-    assert score([7] * 16, yes=()) == 0.0
+    assert log_score([7] * 16, yes=()) == float("-inf")
 
 
 def test_tighter_epsilon_lowers_the_score():
@@ -143,7 +162,10 @@ def test_several_yes_spellings_are_summed():
 
 def test_handles_a_realistic_vocabulary_without_overflow():
     votes = torch.tensor([2665] * 100 + [9454] * 28)
-    value = _Bare(248320, 128, 0.35, 3.1e-8, [9454]).yes_probability(votes)
+    value = _Bare(248320, 128, 0.35, 3.1e-8, [9454]).log_yes_probability(votes)
 
-    assert 0.0 <= value <= 1.0
+    # Finite and negative: a log-probability. The point of the case is a 248k-token
+    # vocabulary and 128 voters, where the softmax must not overflow — and where the
+    # probability itself is far below what float64 can represent.
     assert math.isfinite(value)
+    assert value <= 0.0
