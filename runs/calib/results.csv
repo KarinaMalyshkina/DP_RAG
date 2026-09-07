@@ -1,0 +1,3 @@
+pipeline,mode,variant,params,dup_axis,dup_strength,duplication_rate,n_copies,overlap_rate,n_hosts,n_canaries,canary_n_repeats,epsilon,realized_epsilon,realized_delta,seed,status,auc,tpr_at_fpr_01,tpr_at_fpr_05,accuracy,precision,tpr,fpr,n_members,n_non_members,n_indexed,n_split,ld_threshold,ld_failure_rate,seconds,error
+grislain,unified,original,-,none,0.0,0.0,0.0,0.0,0.0,0.0,0.0,inf,inf,0.0,42,OK,0.8016,0.32,0.44,0.5,nan,0.0,0.0,25.0,25.0,1000,,,,18.37009920598939,
+koga,unified,original,-,none,0.0,0.0,0.0,0.0,0.0,0.0,0.0,inf,inf,0.0,42,OK,0.5,0.0,0.0,0.5,nan,0.0,0.0,25.0,25.0,1000,,,nan,49.48601471190341,

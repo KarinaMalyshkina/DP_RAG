@@ -1,0 +1,34 @@
+{
+  "_comment": "Execution environment for runs/mia_main, captured from the pod on 2026-07-29 after the sweep completed. The runner's meta block records the experiment configuration but not the hardware or code revision, so this file supplies the reproducibility record the project requires. Captured by hand; regenerate by re-reading the pod, not by editing.",
+  "run": "runs/mia_main",
+  "completed_utc": "2026-07-29T09:23Z",
+  "cells": "84/84 OK",
+  "code": {
+    "git_head": "a540b8cd45296626422f4e8c4d40b1ed27dea500",
+    "git_head_subject": "fix: compute Koga's membership score in closed form instead of sampling it",
+    "includes_dedup_fix": "dc1d7c6 — verbatim duplicates are indexed rather than swallowed by the store; results before this commit are invalid and kept at runs/_INVALID_mia_main_dedup_bug",
+    "local_head_at_capture": "f739fa0",
+    "delta_to_local_head": "cdedc4a + f739fa0 touch only .gitignore and docs/RUNBOOK_GPU.md — no library or script code differs from the revision that produced these results"
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "gpu": "NVIDIA RTX A6000",
+    "vram_mib": 49140,
+    "driver_version": "570.195.03",
+    "workspace": "network volume (MooseFS) mounted at /workspace"
+  },
+  "software": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torch_cuda": "12.8",
+    "transformers": "5.14.1"
+  },
+  "models": {
+    "generator": "Qwen/Qwen3.5-9B",
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2"
+  },
+  "not_captured": {
+    "console_log": "The sweep ran inside a tmux session that has since exited and stdout was not tee'd to a file, so runtime warnings are unrecoverable. Per-cell status, timing and errors survive in results.json. Redirect to a log file on the next sweep.",
+    "model_revisions": "Neither model was pinned to an explicit HF revision; both resolved to whatever was current at first download on 2026-07-28."
+  }
+}
