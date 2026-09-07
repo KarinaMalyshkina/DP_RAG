@@ -23,6 +23,7 @@ from dp_rag_eval.runner.sweep import (
     grid_from_args,
     make_variant,
     variant_configs,
+    variant_seed,
 )
 
 
@@ -111,12 +112,20 @@ def test_make_variant_builds_every_registered_variant():
         assert isinstance(make_variant(name, {}, seed=7), cls)
 
 
-def test_make_variant_passes_seed_and_params_through():
+def test_make_variant_passes_params_through_and_derives_the_seed():
+    """The seed is deliberately *not* passed through.
+
+    Corpus construction and attack-target sampling both draw from
+    ``random.Random(seed)`` over populations of the same size, so a shared seed made
+    the duplicated documents coincide with the scored targets. ``variant_seed``
+    separates the streams; see ``tests/test_variant_target_independence.py``.
+    """
     variant = make_variant("full_duplicate", {"duplication_rate": 0.4, "n_copies": 2}, seed=11)
 
     assert variant.duplication_rate == pytest.approx(0.4)
     assert variant.n_copies == 2
-    assert variant.seed == 11
+    assert variant.seed == variant_seed(11)
+    assert variant.seed != 11
 
 
 def test_make_variant_rejects_an_unknown_name_with_the_known_ones():

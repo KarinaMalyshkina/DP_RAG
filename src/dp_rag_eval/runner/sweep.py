@@ -32,6 +32,11 @@ from dp_rag_eval.privacy import min_voters_for
 logger = logging.getLogger(__name__)
 
 ALL_PIPELINES = ["naive", "koga", "grislain"]
+
+# Offset separating the corpus-construction random stream from the target-sampling
+# one; see :func:`variant_seed`. Recorded in every run's ``meta`` because it changes
+# the corpus, so results produced with and without it must not be pooled.
+VARIANT_SEED_OFFSET = 7919
 # Pipelines with no privacy mechanism: running them once per epsilon would repeat
 # identical work, so they are pinned to the epsilon=infinity cell.
 NON_PRIVATE = {"naive"}
@@ -260,13 +265,40 @@ def grid_from_args(args: Any) -> VariantGrid:
     )
 
 
+def variant_seed(seed: int) -> int:
+    """Derive the corpus-construction seed from the experiment seed.
+
+    Variants and attack targets are both drawn from ``random.Random(seed)`` over a
+    population of the same size, and ``random.sample`` takes the same algorithmic
+    branch each time, so with a shared seed the two draws agree on a prefix: every
+    document a variant duplicates is one of the first targets the attack scores.
+    At a duplication rate of 0.1 that put 100 of 250 scored members in the
+    duplicated set where an independent draw would have put about 25, and from a
+    rate of 0.25 upward it put all of them there — which is why every rate at or
+    above 0.3 measured the same treated population and differed only in corpus
+    size.
+
+    Offsetting the stream makes the two draws independent, so the fraction of
+    scored targets that were duplicated is the duplication rate, as the name
+    promises. The offset is a fixed odd constant rather than something derived
+    from the rate: the corpus a given seed produces must not depend on who is
+    looking at it.
+    """
+    return seed + VARIANT_SEED_OFFSET
+
+
 def make_variant(name: str, params: dict[str, Any], seed: int) -> Any:
-    """Build one dataset variant by name, from the single registry in ``datasets.variants``."""
+    """Build one dataset variant by name, from the single registry in ``datasets.variants``.
+
+    ``seed`` is the experiment seed; the variant is built from
+    :func:`variant_seed` of it, so corpus construction is independent of target
+    sampling.
+    """
     try:
         cls = VARIANTS[name]
     except KeyError:
         raise ValueError(f"Unknown variant: {name!r}; known: {sorted(VARIANTS)}") from None
-    return cls(seed=seed, **params)
+    return cls(seed=variant_seed(seed), **params)
 
 
 def make_variant_cell(cell: VariantCell, seed: int) -> Any:
@@ -313,6 +345,7 @@ class PipelineParams:
     n_tokens: int = 32
     top_k: int = 5
     n_split: int = 8
+    n_docs: int = 1
     mc_samples: int = 200
     # Grislain splits its budget between retrieval and generation; this is
     # retrieval's share, applied before the outer calibration solves the total.
@@ -321,6 +354,76 @@ class PipelineParams:
     # target feasible, capped here. Paying for 200 voters where 20 suffice is pure
     # cost; running 20 where 200 are needed produces a cell that measures nothing.
     auto_n_split_cap: int | None = None
+    # Multiplier on the minimum voter count. The minimum is the count at which the
+    # selection *could* succeed under complete unanimity, which is a necessary
+    # condition the sizing treated as sufficient: at headroom 1.0 a cell needs
+    # essentially every voter to agree, and with one document per voter that never
+    # happens on free-form text. Raising it costs GPU time and nothing else — the
+    # LD cutoff is 1 + log(2/delta_step)/eps_step, independent of the voter count,
+    # and the accountant is never told the count either.
+    n_split_headroom: float = 1.0
+    # Overrides the sizing entirely, including the cap: every private cell gets
+    # exactly this many voters. Used to hold the voter count constant across a
+    # budget sweep, which is what removes it as a confound on the privacy-utility
+    # slope. ``None`` leaves the automatic sizing in charge.
+    n_split_fixed: int | None = None
+
+
+def koga_voter_count(target: PrivacyTarget, params: PipelineParams) -> int:
+    """Voters Koga gets for one cell, under whichever sizing policy is in force.
+
+    Three policies, in precedence order:
+
+    * ``n_split_fixed`` — exactly that count, for every budget including the
+      non-private reference. Holding it constant is what makes a budget sweep's
+      slope attributable to the noise rather than to the voter count.
+    * ``auto_n_split_cap`` — ``headroom`` times the minimum feasible count, floored
+      at ``n_split`` and capped. Headroom above 1.0 is the difference between a
+      cell that needs unanimity and one that needs a plurality.
+    * neither — the flat ``n_split``.
+
+    None of this touches the guarantee: the vote cutoff does not depend on the
+    voter count (:func:`~dp_rag_eval.privacy.ld_vote_threshold`) and the count is
+    not an input to the composition either.
+    """
+    if params.n_split_fixed is not None:
+        return params.n_split_fixed
+    if not (params.auto_n_split_cap and target.is_private):
+        return params.n_split
+
+    minimum = min_voters_for(target)
+    wanted = max(params.n_split, math.ceil(params.n_split_headroom * minimum))
+    n_split = min(wanted, params.auto_n_split_cap)
+    if wanted > params.auto_n_split_cap:
+        logger.warning(
+            "eps=%s: headroom %.2fx of %d voters wants %d but the cap is %d, so this cell runs at "
+            "%.2fx and may still refuse every selection. Raise --auto-n-split-cap or accept it.",
+            target.epsilon,
+            params.n_split_headroom,
+            minimum,
+            wanted,
+            params.auto_n_split_cap,
+            n_split / minimum,
+        )
+    return n_split
+
+
+def cell_config_suffix(name: str, target: PrivacyTarget, params: PipelineParams) -> str:
+    """The part of a cell's identity that comes from the pipeline's own configuration.
+
+    Only Koga contributes one, and only the voter count: it is the knob a sweep now
+    varies deliberately, and two cells differing in it are different systems — one
+    that answers and one that does not, at the same budget. Without it in the key,
+    a fixed-count control sharing a directory with an auto-sized run is skipped as
+    already done, and the command exits successfully having measured nothing. That
+    happened once; the guard is here so it cannot happen twice.
+
+    Knobs that do not vary within this project (``top_k``, ``mc_samples``,
+    ``retrieval_share``) stay out, so that keys already written remain readable.
+    """
+    if name != "koga":
+        return ""
+    return f"|n_split={koga_voter_count(target, params)}"
 
 
 def build_pipeline(
@@ -347,9 +450,7 @@ def build_pipeline(
     threshold. That keeps the reference point the published non-private algorithm
     rather than DP with the noise turned down.
     """
-    n_split = params.n_split
-    if name == "koga" and params.auto_n_split_cap and target.is_private:
-        n_split = min(max(params.n_split, min_voters_for(target)), params.auto_n_split_cap)
+    n_split = koga_voter_count(target, params) if name == "koga" else params.n_split
 
     if name == "naive":
         pipeline: Any = NaivePipeline(
@@ -361,7 +462,7 @@ def build_pipeline(
             tokenizer,
             embedder,
             n_split=n_split,
-            n_docs=1,
+            n_docs=params.n_docs,
             max_new_tokens=params.n_tokens,
             mc_samples=params.mc_samples,
             device=device,
@@ -433,6 +534,35 @@ class CheckpointedRun:
                 logger.info("Checkpoint: %d cells already done — resuming", len(self.done))
             except Exception:
                 logger.warning("Could not read checkpoint at %s; starting fresh", self.results_path)
+        self._reject_a_foreign_generator()
+
+    def _reject_a_foreign_generator(self) -> None:
+        """Refuse to add cells to a directory a different generator wrote.
+
+        A cell key identifies a *configuration*, not a model, so two generators
+        produce identical keys for the same configuration. Pointed at a shared
+        directory, the second model's run would find every cell already done and
+        exit successfully having measured nothing — the same silent-success failure
+        the voter-count suffix exists to prevent, one level up.
+
+        The model is deliberately kept **out** of the key rather than added to it.
+        Adding it would change every key already written, so resuming any existing
+        run would recompute finished cells from scratch. A second model is a second
+        experiment and belongs in its own ``--output-dir``; this only makes the
+        mistake loud.
+        """
+        mine = self.meta.get("generator")
+        if not mine:
+            return
+        found = {m.get("generator") for m in self.meta_history if isinstance(m, dict)}
+        found |= {r.get("generator") for r in self.rows}
+        others = sorted(g for g in found if g and g != mine)
+        if others:
+            raise RuntimeError(
+                f"{self.results_path} already holds cells produced by {', '.join(others)}, but this "
+                f"run uses {mine}. Cell keys do not carry the model, so resuming here would skip "
+                "every shared cell and measure nothing. Give each generator its own --output-dir."
+            )
 
     def is_done(self, cell: str) -> bool:
         return cell in self.done

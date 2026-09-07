@@ -104,6 +104,11 @@ class FullDuplicateVariant:
             base = doc.copy()
             base.metadata["variant"] = self.name
             base.metadata["is_duplicate"] = False
+            # Marked on the *original*, not only on its copies: an attack scores the
+            # original, so answering "was this target duplicated?" from the copies
+            # alone would mean scanning the whole corpus for a matching
+            # ``duplicate_of``. Mirrors ``is_fragment_donor`` in PartialOverlapVariant.
+            base.metadata["has_duplicates"] = i in selected
             out.append(base)
             if i in selected:
                 for j in range(self.n_copies):
@@ -297,6 +302,28 @@ class CanaryInjectionVariant:
             n,
         )
         return out
+
+
+def treated_doc_ids(corpus: list[Document]) -> set[str]:
+    """Ids of the documents a duplication variant actually acted on.
+
+    "Acted on" means the document was repeated verbatim (:class:`FullDuplicateVariant`)
+    or donated a fragment to other documents (:class:`PartialOverlapVariant`). The
+    duplicate copies themselves are excluded — they are the treatment, not its
+    recipients, and an attack scores the original.
+
+    This is what lets one sweep report two quantities: the leakage increase averaged
+    over all scored targets, which is what a duplication *rate* describes, and the
+    increase over the treated ones, which is what an adversary aiming at redundant
+    documents would see. Before the variant and target streams were separated those
+    two coincided by accident and only the second was ever measured.
+    """
+    return {
+        doc.id
+        for doc in corpus
+        if not doc.metadata.get("is_duplicate", False)
+        and (doc.metadata.get("has_duplicates", False) or doc.metadata.get("is_fragment_donor", False))
+    }
 
 
 # The single variant-name -> class mapping. ``runner.sweep.make_variant`` builds

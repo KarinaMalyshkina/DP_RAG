@@ -105,9 +105,16 @@ class PrivacyTarget:
         return math.isfinite(self.epsilon)
 
     def label(self) -> str:
-        """Short, filesystem-safe identifier used in result keys."""
+        """Short, filesystem-safe identifier used in result keys.
+
+        The answer length is part of the identifier because it is part of the target:
+        an epsilon quoted without it does not describe a guarantee, and two cells
+        differing only in ``n_tokens`` are different measurements. Leaving it out let
+        them collide in a shared checkpoint, where the second is skipped as already
+        done and the run reports success having measured nothing.
+        """
         eps = "inf" if not math.isfinite(self.epsilon) else f"{self.epsilon:g}"
-        return f"eps={eps}"
+        return f"eps={eps},n_tokens={self.n_tokens}"
 
 
 @dataclass
