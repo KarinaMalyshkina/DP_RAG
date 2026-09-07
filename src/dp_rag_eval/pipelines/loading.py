@@ -6,7 +6,11 @@ epsilon values does not reload the generator/embedder for each cell.
 
 Three concerns live here because all three pipelines share them:
 
-* **Loading** — dtype selection (bf16 on GPU, fp32 on CPU) and attention backend.
+* **Loading** — dtype selection (bf16 on GPU, fp32 on CPU), attention backend, and
+  the auto class. ``AutoModelForCausalLM`` covers every text-only chat model and is
+  always tried first; checkpoints published as multimodal wrappers (Gemma 4 ships
+  as ``Gemma4UnifiedForConditionalGeneration``) fall through to the wrapper classes
+  and are then checked to be emitting vocabulary logits rather than hidden states.
 * **Prompting** — :func:`chat_prompt`, which disables reasoning models' thinking
   mode so that the first generated token is the answer itself.
 * **Forwarding** — :func:`forward_logits`, which restricts the returned logits to
@@ -22,7 +26,7 @@ import math
 
 import torch
 import transformers
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +116,131 @@ def _dtype_kwarg() -> str:
     return "dtype" if _transformers_version() >= (4, 56) else "torch_dtype"
 
 
+# Auto classes tried, in order, when loading a generator.
+#
+# ``AutoModelForCausalLM`` is first and unconditional. Every text-only chat model in
+# this framework loads through it, so that call stays byte-for-byte what it always
+# was and the branches below are unreachable for them. The rest exist for
+# checkpoints published as multimodal wrappers: Gemma 4 ships as
+# ``Gemma4UnifiedForConditionalGeneration`` and is not registered for causal LM at
+# all. They are resolved by name rather than imported, because which of them exists
+# depends on the installed transformers version.
+#
+# Deliberately *not* done here: choosing the class up front from
+# ``MODEL_FOR_CAUSAL_LM_MAPPING``. That reads better, but it would make the main
+# model's load depend on how the lazy auto-mapping behaves in a given transformers
+# release. Trying the causal class first cannot regress a model that already loads.
+_WRAPPER_CLASS_NAMES = ("AutoModelForMultimodalLM", "AutoModelForImageTextToText", "AutoModelForVision2Seq")
+
+
+def _wrapper_classes() -> list[type]:
+    """Multimodal auto classes present in the installed transformers, in preference order."""
+    found = []
+    for name in _WRAPPER_CLASS_NAMES:
+        cls = getattr(transformers, name, None)
+        if cls is not None:
+            found.append(cls)
+    return found
+
+
+def _preferred_attn(model_id: str, attn_implementation: str | None) -> str | None:
+    """Force eager attention for checkpoints that soft-cap their attention logits.
+
+    Gemma-family models with ``attn_logit_softcapping`` set are numerically wrong
+    under sdpa: the capping is applied inside the attention kernel, which the fused
+    path skips. It produces plausible logits rather than an error, so it has to be
+    decided from the config instead of noticed later.
+    """
+    if attn_implementation != "sdpa":
+        return attn_implementation
+    try:
+        config = AutoConfig.from_pretrained(model_id)
+    except Exception as exc:  # noqa: BLE001 - a config we cannot read is not a reason to fail the load
+        logger.debug(
+            "Could not read the config of %s (%s); keeping attn_implementation=%r", model_id, exc, attn_implementation
+        )
+        return attn_implementation
+    for candidate in (config, getattr(config, "text_config", None)):
+        if candidate is not None and getattr(candidate, "attn_logit_softcapping", None):
+            logger.info("%s soft-caps attention logits; using eager attention instead of sdpa", model_id)
+            return "eager"
+    return attn_implementation
+
+
+def _from_pretrained(auto_cls, model_id: str, attn_implementation: str | None, kwargs: dict):
+    """One auto class's load, with the existing attention-backend fallback."""
+    try:
+        return auto_cls.from_pretrained(model_id, attn_implementation=attn_implementation, **kwargs)
+    except (ValueError, TypeError) as exc:
+        logger.info("attn_implementation=%r unavailable (%s); using the default backend", attn_implementation, exc)
+        return auto_cls.from_pretrained(model_id, **kwargs)
+
+
+def _load_weights(model_id: str, attn_implementation: str | None, kwargs: dict):
+    """Load the checkpoint through the first auto class that accepts it."""
+    failures: list[str] = []
+    for auto_cls in [AutoModelForCausalLM, *_wrapper_classes()]:
+        try:
+            model = _from_pretrained(auto_cls, model_id, attn_implementation, kwargs)
+        except torch.cuda.OutOfMemoryError:
+            # Retrying three more times cannot help and only burns rented minutes.
+            raise
+        except Exception as exc:  # noqa: BLE001 - each class reports its own refusal differently
+            failures.append(f"{auto_cls.__name__}: {type(exc).__name__}: {exc}")
+            continue
+        if auto_cls is not AutoModelForCausalLM:
+            logger.warning(
+                "%s is not registered as a causal LM; loaded through %s. Only its text path is used - "
+                "any vision or audio towers in the checkpoint are dead weight.",
+                model_id,
+                auto_cls.__name__,
+            )
+        return model
+    detail = "; ".join(failures)
+    raise RuntimeError(f"Could not load {model_id} through any auto class -- {detail}")
+
+
+def _load_tokenizer(model_id: str):
+    """The text tokenizer, taken from the processor when the repo has no standalone one."""
+    try:
+        return AutoTokenizer.from_pretrained(model_id, padding_side="left")
+    except Exception as exc:  # noqa: BLE001 - multimodal repos may only ship a processor
+        logger.info("AutoTokenizer failed for %s (%s); falling back to the processor's tokenizer", model_id, exc)
+        processor = transformers.AutoProcessor.from_pretrained(model_id)
+        tokenizer = getattr(processor, "tokenizer", None)
+        if tokenizer is None:
+            raise
+        tokenizer.padding_side = "left"
+        return tokenizer
+
+
+def _assert_lm_head(model, tokenizer, device: str) -> None:
+    """Confirm the loaded object actually emits vocabulary logits, with one tiny forward.
+
+    Every attack in this framework reads a next-token logit vector: the gray-box
+    scorers take P('Yes') vs P('No') from it, and Koga votes on its argmax. A
+    multimodal wrapper that returns hidden states instead would give a
+    well-shaped, entirely meaningless score for every query, and nothing
+    downstream would notice. Two tokens of compute is a cheap place to find out.
+    """
+    encoded = tokenizer("Hello", return_tensors="pt")
+    with torch.no_grad():
+        output = model(
+            input_ids=encoded["input_ids"].to(device),
+            attention_mask=encoded["attention_mask"].to(device),
+        )
+    logits = getattr(output, "logits", None)
+    if logits is None:
+        raise RuntimeError(f"{type(model).__name__} returned no `logits`; this framework cannot score with it.")
+    width = int(logits.shape[-1])
+    if width < len(tokenizer):
+        raise RuntimeError(
+            f"{type(model).__name__} emits {width}-wide vectors but the tokenizer has {len(tokenizer)} "
+            "tokens - this looks like hidden states, not vocabulary logits."
+        )
+    logger.info("Logit head verified: %d-wide over a %d-token vocabulary", width, len(tokenizer))
+
+
 def load_generator(
     model_id: str,
     device: str,
@@ -135,7 +264,7 @@ def load_generator(
     torch_dtype = resolve_dtype(dtype, device)
     logger.info("Loading generator %s on %s (%s)", model_id, device, torch_dtype)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
+    tokenizer = _load_tokenizer(model_id)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.chat_template is None:
@@ -143,11 +272,7 @@ def load_generator(
         tokenizer.chat_template = _FALLBACK_CHAT_TEMPLATE
 
     kwargs = {_dtype_kwarg(): torch_dtype, "low_cpu_mem_usage": True}
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_id, attn_implementation=attn_implementation, **kwargs)
-    except (ValueError, TypeError) as exc:
-        logger.info("attn_implementation=%r unavailable (%s); using the default backend", attn_implementation, exc)
-        model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+    model = _load_weights(model_id, _preferred_attn(model_id, attn_implementation), kwargs)
     model = model.to(device).eval()
 
     if model.dtype != torch_dtype:
@@ -160,6 +285,7 @@ def load_generator(
         )
     if supports_thinking(tokenizer):
         logger.info("%s is a thinking model; chat_prompt() will disable thinking mode", model_id)
+    _assert_lm_head(model, tokenizer, device)
     return model, tokenizer
 
 
