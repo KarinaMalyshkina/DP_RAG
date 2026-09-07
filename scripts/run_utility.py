@@ -47,9 +47,11 @@ from dp_rag_eval.runner.sweep import (
     ALL_PIPELINES,
     NON_PRIVATE,
     VARIANT_COLUMNS,
+    VARIANT_SEED_OFFSET,
     CheckpointedRun,
     PipelineParams,
     build_pipeline,
+    cell_config_suffix,
     eps_label,
     grid_from_args,
     make_variant_cell,
@@ -64,6 +66,10 @@ logger = logging.getLogger("run_utility")
 
 CSV_FIELDS = [
     "pipeline",
+    # The generator, per row rather than only in meta: reporting merges several run
+    # directories, and once two models are in play a row that cannot name its own is
+    # unattributable. CheckpointedRun refuses to mix them within one directory.
+    "generator",
     *VARIANT_COLUMNS,
     "epsilon",
     "realized_epsilon",
@@ -75,8 +81,16 @@ CSV_FIELDS = [
     "exact_match_mean",
     "n_answers",
     "n_empty",
+    "tokens_per_answer_mean",
     "n_indexed",
     "n_split",
+    # Koga diagnostics. An empty answer is either "the selection refused" or "the
+    # model said nothing"; only these columns tell the two apart, and only the last
+    # three say whether refusal was marginal or hopeless.
+    "ld_failure_rate",
+    "vote_threshold",
+    "first_step_lead_mean",
+    "refused_at_first_step",
     "seconds",
     "error",
 ]
@@ -135,6 +149,30 @@ def parse_args() -> argparse.Namespace:
         "The default 128 is what buys an overlap with Grislain's reachable range (eps 4 and 8 at "
         "n_tokens=32) while keeping retrieval selective on a 1000-document corpus. Pass 0 to pin the "
         "count to --n-split instead, which leaves every low-epsilon cell INFEASIBLE.",
+    )
+    p.add_argument(
+        "--n-split-headroom",
+        type=float,
+        default=1.0,
+        help="Koga: multiply the minimum feasible voter count by this. At 1.0 the selection succeeds only "
+        "under near-unanimity, which with one document per voter is why every answer comes back empty. "
+        "Costs GPU time and nothing else — the vote cutoff and the accounting are both independent of "
+        "the voter count.",
+    )
+    p.add_argument(
+        "--n-split-fixed",
+        type=int,
+        default=None,
+        help="Koga: use exactly this many voters at every budget, overriding the sizing and the cap. "
+        "Required for an answer-rate curve: otherwise the voter count moves with epsilon and the two "
+        "effects cannot be separated.",
+    )
+    p.add_argument(
+        "--n-docs",
+        type=int,
+        default=1,
+        help="Koga: documents per voter. Groups stay disjoint, so the guarantee is unchanged; agreement "
+        "rises because voters' contexts start to overlap.",
     )
     p.add_argument("--retrieval-share", type=float, default=0.1, help="Grislain: share of epsilon spent retrieving")
     p.add_argument("--top-k", type=int, default=5, help="Documents retrieved per query")
@@ -224,8 +262,11 @@ def main() -> None:
         n_tokens=args.n_tokens,
         top_k=args.top_k,
         n_split=args.n_split,
+        n_docs=args.n_docs,
         retrieval_share=args.retrieval_share,
         auto_n_split_cap=args.auto_n_split_cap,
+        n_split_headroom=args.n_split_headroom,
+        n_split_fixed=args.n_split_fixed,
     )
     total_cells = (
         len(seeds) * len(variants) * sum(1 if name in NON_PRIVATE else len(epsilons) for name in pipeline_names)
@@ -245,6 +286,10 @@ def main() -> None:
         "delta": args.delta,
         "top_k": args.top_k,
         "n_split": args.n_split,
+        "n_split_headroom": args.n_split_headroom,
+        "n_split_fixed": args.n_split_fixed,
+        "n_docs": args.n_docs,
+        "variant_seed_offset": VARIANT_SEED_OFFSET,
     }
     run = CheckpointedRun(args.output_dir, meta, CSV_FIELDS)
     run.report_fn = lambda: render_markdown(run.rows, meta)
@@ -282,7 +327,10 @@ def main() -> None:
                 for name in pipeline_names:
                     if name in NON_PRIVATE and target.is_private:
                         continue
-                    cell = f"{name}|{cell_spec.name}|{variant_columns['params']}|{target.label()}|seed={seed}"
+                    cell = (
+                        f"{name}|{cell_spec.name}|{variant_columns['params']}|{target.label()}"
+                        f"{cell_config_suffix(name, target, params)}|seed={seed}"
+                    )
                     if run.is_done(cell):
                         continue
 
@@ -290,6 +338,7 @@ def main() -> None:
                     row: dict[str, Any] = {
                         "cell": cell,
                         "pipeline": name,
+                        "generator": args.generator,
                         **variant_columns,
                         "epsilon": eps_label(epsilon),
                         "seed": seed,
@@ -310,7 +359,11 @@ def main() -> None:
                         )
                         row["realized_epsilon"] = calibration.realized.epsilon
                         row["realized_delta"] = calibration.realized.delta
-                        row["n_split"] = calibration.diagnostics.get("n_split", "")
+                        # The non-private calibration carries no diagnostics, so without the
+                        # fallback an eps=inf cell records no voter count — and it is the
+                        # reference point every other cell in a fixed-count sweep is compared
+                        # against, so it is exactly the one that must not be blank.
+                        row["n_split"] = calibration.diagnostics.get("n_split") or getattr(pipe, "n_split", "")
                         if not calibration.feasible:
                             row["status"] = "INFEASIBLE"
                             row["error"] = calibration.reason
@@ -318,12 +371,17 @@ def main() -> None:
                         else:
                             logger.info("Running %s ...", cell)
                             pipe.index(corpus)
+                            if hasattr(pipe, "reset_ld_stats"):
+                                pipe.reset_ld_stats()
                             per_answer: list[dict[str, float]] = []
                             n_empty = 0
+                            n_tokens_out: list[int] = []
                             for doc in queries:
                                 question = str(doc.metadata["query"])
                                 reference = doc.text[: args.max_answer_chars]
-                                generated = str(pipe.answer(question).get("answer", ""))
+                                answer = pipe.answer(question)
+                                generated = str(answer.get("answer", ""))
+                                n_tokens_out.append(int(answer.get("n_generated", 0)))
                                 if not generated.strip():
                                     n_empty += 1
                                 scores = score_answer(generated, reference)
@@ -339,6 +397,19 @@ def main() -> None:
                                 )
                             row.update(aggregate_scores(per_answer))
                             row["n_empty"] = n_empty
+                            row["tokens_per_answer_mean"] = (
+                                sum(n_tokens_out) / len(n_tokens_out) if n_tokens_out else 0.0
+                            )
+                            # Without these an empty-answer cell is indistinguishable
+                            # from one where the mechanism worked and the model had
+                            # nothing to say.
+                            if hasattr(pipe, "ld_failure_rate"):
+                                row["ld_failure_rate"] = pipe.ld_failure_rate
+                            if hasattr(pipe, "vote_summary"):
+                                summary = pipe.vote_summary()
+                                row["first_step_lead_mean"] = summary.get("first_step_lead_mean", "")
+                                row["vote_threshold"] = summary.get("vote_threshold", "")
+                                row["refused_at_first_step"] = summary.get("refused_at_first_step", "")
                         del pipe
                     except Exception as exc:  # noqa: BLE001 - record failures per cell
                         row["status"] = "ERROR"

@@ -74,10 +74,12 @@ from dp_rag_eval.runner.sweep import (
     ALL_PIPELINES,
     NON_PRIVATE,
     VARIANT_COLUMNS,
+    VARIANT_SEED_OFFSET,
     CheckpointedRun,
     PipelineParams,
     VariantCell,
     build_pipeline,
+    cell_config_suffix,
     eps_label,
     grid_from_args,
     make_variant_cell,
@@ -95,6 +97,10 @@ MODE_REQUIREMENTS = {"exposure": "completion_logprob", "generation": "answer"}
 
 CSV_FIELDS = [
     "pipeline",
+    # The generator, per row rather than only in meta: reporting merges several run
+    # directories, and once two models are in play a row that cannot name its own is
+    # unattributable. CheckpointedRun refuses to mix them within one directory.
+    "generator",
     "mode",
     *VARIANT_COLUMNS,
     "epsilon",
@@ -177,6 +183,27 @@ def parse_args() -> argparse.Namespace:
         "The default 128 is what buys an overlap with Grislain's reachable range (eps 4 and 8 at "
         "n_tokens=32) while keeping retrieval selective on a 1000-document corpus. Pass 0 to pin the "
         "count to --n-split instead, which leaves every low-epsilon cell INFEASIBLE.",
+    )
+    p.add_argument(
+        "--n-split-headroom",
+        type=float,
+        default=1.0,
+        help="Koga: multiply the minimum feasible voter count by this. Matters most here: the "
+        "`generation` scoring mode needs a non-empty answer to search for the secret in, and at 1.0 "
+        "the selection needs near-unanimity and returns nothing, so extraction reads 0.000 for a "
+        "reason that has nothing to do with the secret being protected.",
+    )
+    p.add_argument(
+        "--n-split-fixed",
+        type=int,
+        default=None,
+        help="Koga: use exactly this many voters at every budget, overriding the sizing and the cap.",
+    )
+    p.add_argument(
+        "--n-docs",
+        type=int,
+        default=1,
+        help="Koga: documents per voter. Groups stay disjoint, so the guarantee is unchanged.",
     )
     p.add_argument("--retrieval-share", type=float, default=0.1, help="Grislain: share of epsilon spent retrieving")
     p.add_argument("--top-k", type=int, default=5, help="Documents retrieved per query")
@@ -272,8 +299,11 @@ def main() -> None:
         n_tokens=args.n_tokens,
         top_k=args.top_k,
         n_split=args.n_split,
+        n_docs=args.n_docs,
         retrieval_share=args.retrieval_share,
         auto_n_split_cap=args.auto_n_split_cap,
+        n_split_headroom=args.n_split_headroom,
+        n_split_fixed=args.n_split_fixed,
     )
     meta = {
         "attack": "Carlini et al. 2019 Secret Sharer, RAG-adapted",
@@ -292,6 +322,14 @@ def main() -> None:
         "n_tokens": args.n_tokens,
         "modes": modes,
         "top_k": args.top_k,
+        "n_split": args.n_split,
+        "n_split_headroom": args.n_split_headroom,
+        "n_split_fixed": args.n_split_fixed,
+        "n_docs": args.n_docs,
+        # Canary host selection also runs through make_variant, so this offset changes
+        # which documents carry the secrets. Runs recorded with a different value here
+        # built a different corpus and must not be pooled with these.
+        "variant_seed_offset": VARIANT_SEED_OFFSET,
     }
     total_cells = sum(
         len(seeds) * len(corpus_cells) * len(repeats_grid) * (1 if name in NON_PRIVATE else len(epsilons)) * len(modes)
@@ -361,7 +399,8 @@ def main() -> None:
                         label = eps_label(epsilon)
                         prefix = (
                             f"{name}|%s|{cell_spec.name}|{base_columns['params']}|"
-                            f"repeats={n_repeats}|{target.label()}|seed={seed}"
+                            f"repeats={n_repeats}|{target.label()}"
+                            f"{cell_config_suffix(name, target, params)}|seed={seed}"
                         )
                         pending = [m for m in modes if not run.is_done(prefix % m)]
                         if not pending:
@@ -382,6 +421,7 @@ def main() -> None:
                             "realized_delta": calibration.realized.delta,
                             "n_split": calibration.diagnostics.get("n_split", ""),
                             "pipeline": name,
+                            "generator": args.generator,
                             "epsilon": label,
                             "seed": seed,
                             "n_indexed": len(corpus),

@@ -58,14 +58,17 @@ from dp_rag_eval.attacks import RAGMembershipInferenceAttack
 from dp_rag_eval.attacks.membership import ALL_MODES, MODE_METHODS
 from dp_rag_eval.core.types import Document, PrivacyTarget
 from dp_rag_eval.datasets.loaders import HealthCareMagicLoader
+from dp_rag_eval.datasets.variants import treated_doc_ids
 from dp_rag_eval.pipelines import Embedder, load_generator, resolve_device
 from dp_rag_eval.runner.sweep import (
     ALL_PIPELINES,
     NON_PRIVATE,
     VARIANT_COLUMNS,
+    VARIANT_SEED_OFFSET,
     CheckpointedRun,
     PipelineParams,
     build_pipeline,
+    cell_config_suffix,
     eps_label,
     grid_from_args,
     make_variant_cell,
@@ -89,6 +92,10 @@ PIPELINE_MODES = {
 
 CSV_FIELDS = [
     "pipeline",
+    # The generator, per row rather than only in meta: reporting merges several run
+    # directories, and once two models are in play a row that cannot name its own is
+    # unattributable. CheckpointedRun refuses to mix them within one directory.
+    "generator",
     "mode",
     *VARIANT_COLUMNS,
     "epsilon",
@@ -106,6 +113,11 @@ CSV_FIELDS = [
     "n_members",
     "n_non_members",
     "n_indexed",
+    # Member targets the duplication variant actually acted on. Compare against
+    # targets-per-class: at a duplication rate of r this should be about r of them,
+    # and a value pinned at 100% for every rate is the symptom of the corpus and
+    # target streams sharing a seed.
+    "n_treated_targets",
     "n_split",
     "ld_threshold",
     "ld_failure_rate",
@@ -174,6 +186,30 @@ def parse_args() -> argparse.Namespace:
         "The default 128 is what buys an overlap with Grislain's reachable range (eps 4 and 8 at "
         "n_tokens=32) while keeping retrieval selective on a 1000-document corpus. Pass 0 to pin the "
         "count to --n-split instead, which leaves every low-epsilon cell INFEASIBLE.",
+    )
+    p.add_argument(
+        "--n-split-headroom",
+        type=float,
+        default=1.0,
+        help="Koga: multiply the minimum feasible voter count by this. The minimum is the count at which "
+        "the selection could succeed only if every voter agreed, and with one document per voter that "
+        "does not happen on free-form text — so at 1.0 a cell can refuse every selection and report an "
+        "AUC that looks like a defeated attack. Costs GPU time and nothing else: the vote cutoff does "
+        "not depend on the voter count and neither does the accounting.",
+    )
+    p.add_argument(
+        "--n-split-fixed",
+        type=int,
+        default=None,
+        help="Koga: use exactly this many voters at every budget, overriding the sizing and the cap. "
+        "Holding the count constant is what stops it co-varying with epsilon and confounding the slope.",
+    )
+    p.add_argument(
+        "--n-docs",
+        type=int,
+        default=1,
+        help="Koga: documents per voter. Groups stay disjoint, so sensitivity — and therefore the "
+        "guarantee — is unchanged; agreement rises because voters' contexts start to overlap.",
     )
     p.add_argument("--mc-samples", type=int, default=200, help="Koga: draws used to estimate P('Yes')")
     p.add_argument("--retrieval-share", type=float, default=0.1, help="Grislain: share of epsilon spent retrieving")
@@ -273,9 +309,12 @@ def main() -> None:
         n_tokens=args.n_tokens,
         top_k=args.top_k,
         n_split=args.n_split,
+        n_docs=args.n_docs,
         mc_samples=args.mc_samples,
         retrieval_share=args.retrieval_share,
         auto_n_split_cap=args.auto_n_split_cap,
+        n_split_headroom=args.n_split_headroom,
+        n_split_fixed=args.n_split_fixed,
     )
     # Which (pipeline, mode) pairs will actually be scheduled — needed before meta so
     # the planned cell count is exact rather than an upper bound.
@@ -305,8 +344,15 @@ def main() -> None:
         "n_tokens": args.n_tokens,
         "modes": modes,
         "n_split": args.n_split,
+        "n_split_headroom": args.n_split_headroom,
+        "n_split_fixed": args.n_split_fixed,
+        "n_docs": args.n_docs,
         "top_k": args.top_k,
         "mc_samples": args.mc_samples,
+        # Recorded because it changes the corpus: cells written before the variant
+        # and target streams were separated are not comparable with cells written
+        # after, and the only way to tell them apart later is this field.
+        "variant_seed_offset": VARIANT_SEED_OFFSET,
     }
     run = CheckpointedRun(args.output_dir, meta, CSV_FIELDS)
     run.report_fn = lambda: render_markdown(run.rows, meta)
@@ -338,12 +384,16 @@ def main() -> None:
         for cell_spec in variants:
             variant_columns = cell_spec.columns()
             indexed_corpus = make_variant_cell(cell_spec, seed).apply(members_base)
+            treated = treated_doc_ids(indexed_corpus)
+            n_treated_targets = sum(1 for doc, is_member in targets if is_member and doc.id in treated)
             logger.info(
-                "[seed %d][%s %s] corpus: %d documents",
+                "[seed %d][%s %s] corpus: %d documents, %d of %d scored member targets treated",
                 seed,
                 cell_spec.name,
                 variant_columns["params"],
                 len(indexed_corpus),
+                n_treated_targets,
+                args.targets_per_class,
             )
 
             for epsilon in epsilons:
@@ -351,7 +401,10 @@ def main() -> None:
                 for name in pipeline_names:
                     if name in NON_PRIVATE and target.is_private:
                         continue  # no mechanism: only the eps=inf cell is meaningful
-                    prefix = f"{name}|%s|{cell_spec.name}|{variant_columns['params']}|{target.label()}|seed={seed}"
+                    prefix = (
+                        f"{name}|%s|{cell_spec.name}|{variant_columns['params']}|{target.label()}"
+                        f"{cell_config_suffix(name, target, params)}|seed={seed}"
+                    )
                     pending = [m for m in pipeline_modes[name] if not run.is_done(prefix % m)]
                     if not pending:
                         continue
@@ -367,13 +420,18 @@ def main() -> None:
                     )
                     base_row = {
                         "pipeline": name,
+                        "generator": args.generator,
                         **variant_columns,
                         "epsilon": eps_label(epsilon),
                         "realized_epsilon": calibration.realized.epsilon,
                         "realized_delta": calibration.realized.delta,
                         "seed": seed,
                         "n_indexed": len(indexed_corpus),
-                        "n_split": calibration.diagnostics.get("n_split", ""),
+                        "n_treated_targets": n_treated_targets,
+                        # Falls back to the pipeline's own count because the non-private
+                        # calibration carries no diagnostics, and the eps=inf cell is the
+                        # reference every other cell is compared against.
+                        "n_split": calibration.diagnostics.get("n_split") or getattr(pipe, "n_split", ""),
                         "ld_threshold": calibration.diagnostics.get("ld_threshold", ""),
                     }
 
@@ -414,6 +472,10 @@ def main() -> None:
                             result = attack.run(targets)
                             row.update(result.metrics)
                             predictions = result.predictions
+                            # Ground truth for stratifying this cell two ways: over
+                            # every scored target, and over the treated ones only.
+                            for prediction in predictions:
+                                prediction["target_duplicated"] = prediction["doc_id"] in treated
                             if hasattr(pipe, "ld_failure_rate"):
                                 row["ld_failure_rate"] = pipe.ld_failure_rate
                         except Exception as exc:  # noqa: BLE001 - record failures per cell
