@@ -569,3 +569,173 @@ tar czf /workspace/dprag-results.tar.gz runs/
 Download it, verify locally that `results.csv` opens and row counts match, **then**
 destroy the pod. A snapshot of the volume is cheaper than the GPU, but only the
 `runs/` directory is irreplaceable — everything else is reproducible from git.
+
+---
+
+## 8. Replication on a second generator
+
+Everything above runs `Qwen/Qwen3.5-9B`. This section repeats part of the matrix on
+a second model, so the thesis can say a finding is a property of the mechanism
+rather than of one language model. It is a **replication, not a generalisation**:
+two models support "reproduced on a second generator", not "holds across models".
+
+Model: `google/gemma-4-12B-it` (Apache-2.0, no HF gate, dense text path, thinking
+disabled by the chat template's own default). Fallback if the multimodal loader
+path misbehaves: `allenai/Olmo-3-7B-Instruct` — same licence, standard
+`AutoModelForCausalLM`, no code involved.
+
+Koga is **out of scope** here. Its cells cost roughly 2.5x Grislain's, and a second
+model would require re-deciding voter feasibility from scratch against a different
+tokenisation. The supervisor's request is Grislain.
+
+### 8.1 The grid must match Qwen's exactly
+
+A Gemma cell whose configuration has no Qwen counterpart answers nothing about the
+model, because there is nothing to compare it against. The two blocks below
+reproduce the grids that produced `12_koga_headroom/06_plane32` and `04_dup_v2`.
+**If the grid is extended, extend it for both models** — an ε value present for one
+generator only is unpaired and uninterpretable.
+
+What is comparable across the two models is the **duplication delta**, not the
+absolute leakage: a different model has a different AUC on the clean corpus
+(Grislain sits at 0.710 at ε=∞ under Qwen), and only the difference between the
+duplicated condition and its own control is on a common scale.
+
+### 8.2 Pre-flight
+
+```bash
+# 1. does this checkpoint load, emit vocabulary logits, and answer with its first token?
+uv run python scripts/probe_generator.py --generator google/gemma-4-12B-it
+
+# 2. the three optimisations that fail silently
+uv run python scripts/verify_optimizations.py --generator google/gemma-4-12B-it
+```
+
+`probe_generator.py` prints the tail of the rendered prompt. For Gemma 4 it must
+end with an already-closed empty thought channel (`<|channel>thought\n<channel|>`)
+and the first generated token must be the answer, not a control token. If a control
+token appears there, **stop**: every gray-box score in the run would be a
+well-formed measurement of the model's propensity to open a channel.
+
+Then one calibration cell, as in §1, to replace the time estimate below with a
+measured one:
+
+```bash
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/calib \
+  --pipelines grislain --variants original --variant-grid base \
+  --epsilons inf --modes unified --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 25 --seeds 42
+```
+
+### 8.3 Block A — clean corpus across ε
+
+```bash
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
+  --pipelines grislain,naive --variant-grid base --variants original \
+  --epsilons inf,4,5,8,16 --modes unified \
+  --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 250 \
+  --seeds 42,43,44
+
+uv run python scripts/run_utility.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/utility \
+  --pipelines grislain,naive --variant-grid base --variants original \
+  --epsilons inf,4,5,8,16 \
+  --n-tokens 32 --delta 1e-6 \
+  --corpus-size 1000 --n-queries 200 --max-answer-chars 176 \
+  --seeds 42,43,44
+```
+
+Both coordinates of a privacy-utility point must come from one configuration, so
+`--n-tokens`, `--delta` and the ε list are identical in the two commands, exactly as
+in §5a.
+
+### 8.4 Block B — full duplicates across ε
+
+The Qwen duplication grid was two commands, and reproducing it takes two. The
+default `--dup-rates` stops at 0.9 and the copies ladder is anchored at
+`--base-dup-rate`, so a single invocation cannot produce all 18 full-duplicate
+configurations. These flags were recovered from the finished cells of
+`12_koga_headroom/04_dup_v2`, not from memory; the expansion was checked to give
+1 control + 18 duplicated configurations, exactly what that run holds.
+
+```bash
+# the rate ladder 0.1-1.0, plus the copies ladder on a 30%-duplicated corpus
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
+  --pipelines grislain,naive --variant-grid duplication \
+  --variants original,full_duplicate \
+  --dup-rates 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0 \
+  --dup-copies 2,3,5,10 \
+  --epsilons inf,1 --modes unified \
+  --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 250 \
+  --seeds 42,43,44
+
+# the copies ladder again on a fully duplicated corpus — this is figure N6.
+# Same directory, same flags but --base-dup-rate 1.0: the rate ladder repeats
+# identically and is skipped by the checkpoint, so only 4 configurations are new.
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
+  --pipelines grislain,naive --variant-grid duplication \
+  --variants original,full_duplicate \
+  --dup-rates 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0 \
+  --dup-copies 2,3,5,10 --base-dup-rate 1.0 \
+  --epsilons inf,1 --modes unified \
+  --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 250 \
+  --seeds 42,43,44
+```
+
+`runs/gemma4/mia` on purpose — the same directory as Block A, for the reason given
+in §3: a duplicated cell is only readable as a difference from the `original` cell
+at the same pipeline, mode, ε and seed, and a difference cannot be taken across two
+files. Shared cells are skipped by the checkpoint, so the overlap is free.
+
+`--variants original,full_duplicate` drops `partial_overlap` from the duplication
+grid. That axis is not part of this request and would add roughly 6 GPU-hours.
+
+### 8.5 One directory, one model
+
+Cell keys carry the configuration but **not** the generator, so the same
+configuration produces the same key under both models. Pointing a Gemma run at a
+Qwen directory would find every cell already done and exit successfully having
+measured nothing.
+
+`CheckpointedRun` refuses that: it compares the generator in `meta` and in the rows
+against the one being run and aborts with the two names. The model is deliberately
+kept out of the key rather than added to it — adding it would change every key
+already written and re-run every finished cell of the existing matrix.
+
+So: `runs/gemma4/...` for this campaign, never the Qwen directories. Each result row
+now also carries its own `generator` column, so the two campaigns can be merged for
+reporting without losing track of which model produced which row.
+
+### 8.6 Expected cost
+
+Derived from measured Qwen cell times, scaled by 1.4x for 12B against 9B. Gemma 4's
+sliding-window attention (5 layers of every 6) makes its KV cache smaller than a
+fully-attentive model of the same size, so this is an upper estimate.
+
+| block | cells | GPU-h |
+|---|---|---|
+| A — attack, clean corpus | 18 | 1.5 |
+| A — utility, clean corpus | 18 | 0.7 |
+| B — full duplicates + control, grislain | 114 | 9.9 |
+| B — full duplicates + control, naive | 57 | 3.0 |
+| shared between A and B (`original` at ε=∞) | −6 | −0.4 |
+| **total** | **201** | **≈15** |
+
+Blocks A and B share the six `original`, ε=∞ cells, so the second command to reach
+them skips them. That is the point of pointing both at one directory, and the row
+above is there so the counts add up rather than looking like an arithmetic slip.
+
+Book 24–28 hours to cover the download (~24 GB), the pre-flight, one restart and
+the transfer back. Weights are ~24 GB in bf16 on a 48 GB card — comfortable, but do
+not run a second sweep beside it (§1).
+
+**Do not quantise**, not even to fit a larger model. Grislain clips and sums raw
+logits under a sensitivity bound; quantisation noise would land directly on the
+quantity being aggregated and would be invisible in the results.
