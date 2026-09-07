@@ -46,5 +46,11 @@ runs/scratch_*/
 docs/*.docx
 scripts/build_methodology_docx.py
 
+# Result files staged for writing the thesis text. Every file under docs_vkr/ is a
+# copy of, or is derived from, something already under runs/ — so ignoring it loses
+# no data, and tracking it would duplicate multi-megabyte prediction dumps in the
+# history under a second name.
+docs_vkr/
+
 # Word lock/temp files, created while a document is open.
 ~$*
