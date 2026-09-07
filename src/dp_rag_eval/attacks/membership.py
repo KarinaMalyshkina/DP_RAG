@@ -21,6 +21,7 @@ with an ``"answer"`` string, so it runs against any of our DP-RAG pipelines.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Protocol
 
 from dp_rag_eval.attacks.base import AttackResult
@@ -184,13 +185,34 @@ class RAGMembershipInferenceAttack:
         scores: list[float] = []
         predictions: list[dict[str, Any]] = []
 
+        # Rank on a log scale when the pipeline can produce one. AUC and TPR@FPR are
+        # rank statistics, so a monotone transform cannot change them — except where
+        # the untransformed value underflows, and there it changes them a great deal.
+        # Koga's P(Yes) reaches exp(-eps_step * 103); four targets in five collapse to
+        # a tied 0.0 in float64, and a mostly-tied score vector drags AUC toward 0.5
+        # by a cell-dependent amount, which is worse than noise because it looks like
+        # a privacy effect.
+        method = MODE_METHODS.get(self.mode)
+        log_method = f"{method}_log" if method else None
+        use_log = bool(log_method) and hasattr(self.pipeline, log_method)
+        score_kind = "log_p_yes" if use_log else ("p_yes" if method else "binary")
+        # "More likely than not a member" is P >= 0.5, which on the log scale is
+        # log 0.5. AUC and TPR@FPR do not depend on this; accuracy and precision do,
+        # and reading a log score against 0.5 would call every target a non-member.
+        threshold = math.log(0.5) if score_kind != "binary" else 0.5
+
         for document, is_member in targets:
             sample = document.text[: self.sample_chars]
             prompt = PROMPT_TEMPLATE.format(sample=sample)
-            method = MODE_METHODS.get(self.mode)
-            if method is not None:
-                score = float(getattr(self.pipeline, method)(prompt))
-                answer_text = f"P(yes)={score:.3f}"
+            if use_log:
+                score = float(getattr(self.pipeline, log_method)(prompt))
+                answer_text = f"log P(yes)={score:.4f}"
+            elif method is not None:
+                probability = float(getattr(self.pipeline, method)(prompt))
+                # Ranked on the same scale as the pipelines that expose a log directly,
+                # so one results file never mixes the two.
+                score = math.log(probability) if probability > 0.0 else float("-inf")
+                answer_text = f"P(yes)={probability:.3f}"
             else:
                 answer_text = str(self.pipeline.answer(prompt).get("answer", ""))
                 score = _score_response(answer_text)
@@ -202,7 +224,8 @@ class RAGMembershipInferenceAttack:
                     "doc_id": document.id,
                     "is_member": bool(is_member),
                     "score": score,
-                    "predicted_member": score >= 0.5,
+                    "score_kind": score_kind,
+                    "predicted_member": score >= threshold,
                     "response": answer_text,
                 }
             )
@@ -213,7 +236,7 @@ class RAGMembershipInferenceAttack:
             "tpr_at_fpr_05": tpr_at_fpr(labels, scores, target_fpr=0.05),
             "n_members": float(sum(labels)),
             "n_non_members": float(len(labels) - sum(labels)),
-            **_binary_metrics(labels, scores),
+            **_binary_metrics(labels, scores, threshold=threshold),
         }
         logger.info(
             "%s: AUC=%.3f accuracy=%.3f (members=%d, non-members=%d)",
