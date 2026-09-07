@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
 import torch
 
 from dp_rag_eval.core.types import CalibrationResult, Document, PrivacyBudget, PrivacyTarget
@@ -37,6 +38,48 @@ from dp_rag_eval.wrappers.grislain_imports import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _TieSafePUPVectorStore(PUPVectorStore):
+    """Upstream store with one fix: the non-DP threshold must admit tied scores.
+
+    Upstream's ``epsilon = infinity`` path (``pup_vector_store.py:146``) sets the
+    threshold to the ``(top_k + 1)``-th highest score and then keeps documents scoring
+    **strictly** above it. With all-distinct scores that admits exactly ``top_k``
+    documents, which is the intent.
+
+    Byte-identical documents get identical embeddings and therefore identical scores.
+    Once one document has ``top_k + 1`` copies, the ``(top_k + 1)``-th highest score
+    *equals* the highest, so the strict comparison rejects the tied block — and every
+    other document scores lower, so retrieval returns **nothing**. The generator then
+    answers from the public prior alone.
+
+    That is precisely the corpus condition this project studies, and it fails silently:
+    the cell completes, and because the membership signal is gone rather than reversed,
+    the AUC lands *below* chance (0.26 at ``n_copies=5``) which reads as "duplication
+    protected the corpus" — the opposite of the truth. The only visible symptom is the
+    cell running ~3x faster, because one prompt is issued instead of ``top_k + 1``.
+
+    The DP path needs no fix: ``_exp_mechanism_top_k_threshold`` weights each candidate
+    threshold by the *width* of its score interval, and tied scores have zero width, so
+    a tied value can never be sampled. This is why finite-epsilon cells are healthy and
+    only the epsilon = infinity reference collapses.
+
+    Placing the threshold just below the ``top_k``-th highest score keeps the strict
+    comparison and admits ties. Where scores are distinct the two thresholds select the
+    same documents, so this changes no result that did not previously collapse — it is
+    a no-op outside the tied case, verified in ``tests/test_grislain_retrieval_ties.py``.
+    ``max_retrieve`` still caps how many of the admitted documents reach the prompt.
+    """
+
+    def _non_dp_top_k_threshold(self, scores: Any) -> float:
+        if self.top_k is None:  # pragma: no cover - upstream raises before reaching here
+            raise ValueError("top_k is not set")
+        k = min(int(self.top_k), len(scores))
+        if k < 1:
+            return float(np.nextafter(np.min(scores), -np.inf))
+        kth_highest = np.partition(scores, -k)[-k]
+        return float(np.nextafter(kth_highest, -np.inf))
 
 
 class GrislainPipeline:
@@ -105,7 +148,7 @@ class GrislainPipeline:
 
     def _make_store(self) -> PUPVectorStore:
         """Fresh DP vector store per run, reusing the preloaded embedder weights."""
-        store = PUPVectorStore(
+        store = _TieSafePUPVectorStore(
             PUPVectorStoreConfig(
                 top_k=self.top_k,
                 epsilon=self.retrieval_epsilon,
