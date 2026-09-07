@@ -73,9 +73,9 @@ architecture — the model loads without any special install. If it still report
 `uv run python -c "import transformers; print(transformers.__version__)"` before
 reaching for a git install.
 
-**Commit `uv.lock` after the first `uv sync`.** The repository ships without one, so
-this run resolves dependencies fresh; committing the lock it produces is what makes
-every later run reproduce this exact environment.
+`uv.lock` is committed, so `uv sync` reproduces the environment the results were
+produced in rather than resolving fresh. If bootstrap prints that it created one,
+the lock was missing from the checkout — commit it before starting the matrix.
 
 ---
 
@@ -591,10 +591,16 @@ tokenisation. The supervisor's request is Grislain.
 ### 8.1 The grid must match Qwen's exactly
 
 A Gemma cell whose configuration has no Qwen counterpart answers nothing about the
-model, because there is nothing to compare it against. The two blocks below
-reproduce the grids that produced `12_koga_headroom/06_plane32` and `04_dup_v2`.
-**If the grid is extended, extend it for both models** — an ε value present for one
-generator only is unpaired and uninterpretable.
+model, because there is nothing to compare it against. **If the grid is extended,
+extend it for both models** — an ε value present for one generator only is
+unpaired and uninterpretable.
+
+The blocks below are a subset of the Qwen grid, not a copy of it: Grislain only, no
+utility, no `naive`, and a shorter copies ladder. Every retained point has a twin.
+Two need care and are called out where they appear — ε = 0.5 in Block A, whose twin
+comes from the earlier `runs/mia_main` rather than series 12 (§8.3), and ε = 5 in
+Block B, which has no Grislain twin on Qwen at all and is therefore a within-Gemma
+point only (§8.5).
 
 What is comparable across the two models is the **duplication delta**, not the
 absolute leakage: a different model has a different AUC on the clean corpus
@@ -602,6 +608,17 @@ absolute leakage: a different model has a different AUC on the clean corpus
 duplicated condition and its own control is on a common scale.
 
 ### 8.2 Pre-flight
+
+**Set `GENERATOR` before bootstrap**, or it downloads Qwen and sanity-checks the
+wrong model:
+
+```bash
+GENERATOR=google/gemma-4-12B-it bash scripts/bootstrap_gpu.sh
+```
+
+Its own thinking guard is model-agnostic as of this campaign — it used to match only
+Qwen's `<think>`, which would have waved Gemma's `<|channel>thought` through, since
+that string does not contain "think".
 
 ```bash
 # 1. does this checkpoint load, emit vocabulary logits, and answer with its first token?
@@ -628,113 +645,130 @@ uv run python scripts/run_attack.py \
   --members 1000 --non-members 1000 --targets-per-class 25 --seeds 42
 ```
 
-### 8.3 Block A — clean corpus across ε
-
-```bash
-uv run python scripts/run_attack.py \
-  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
-  --pipelines grislain,naive --variant-grid base --variants original \
-  --epsilons inf,4,5,8,16 --modes unified \
-  --n-tokens 32 --delta 1e-6 \
-  --members 1000 --non-members 1000 --targets-per-class 250 \
-  --seeds 42,43,44
-
-uv run python scripts/run_utility.py \
-  --generator google/gemma-4-12B-it --output-dir runs/gemma4/utility \
-  --pipelines grislain,naive --variant-grid base --variants original \
-  --epsilons inf,4,5,8,16 \
-  --n-tokens 32 --delta 1e-6 \
-  --corpus-size 1000 --n-queries 200 --max-answer-chars 176 \
-  --seeds 42,43,44
-```
-
-Both coordinates of a privacy-utility point must come from one configuration, so
-`--n-tokens`, `--delta` and the ε list are identical in the two commands, exactly as
-in §5a.
-
-### 8.4 Block B — full duplicates across ε
-
-The Qwen duplication grid was two commands, and reproducing it takes two. The
-default `--dup-rates` stops at 0.9 and the copies ladder is anchored at
-`--base-dup-rate`, so a single invocation cannot produce all 18 full-duplicate
-configurations. These flags were recovered from the finished cells of
-`12_koga_headroom/04_dup_v2`, not from memory; the expansion was checked to give
-1 control + 18 duplicated configurations, exactly what that run holds.
-
-```bash
-# the rate ladder 0.1-1.0, plus the copies ladder on a 30%-duplicated corpus
-uv run python scripts/run_attack.py \
-  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
-  --pipelines grislain,naive --variant-grid duplication \
-  --variants original,full_duplicate \
-  --dup-rates 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0 \
-  --dup-copies 2,3,5,10 \
-  --epsilons inf,1 --modes unified \
-  --n-tokens 32 --delta 1e-6 \
-  --members 1000 --non-members 1000 --targets-per-class 250 \
-  --seeds 42,43,44
-
-# the copies ladder again on a fully duplicated corpus — this is figure N6.
-# Same directory, same flags but --base-dup-rate 1.0: the rate ladder repeats
-# identically and is skipped by the checkpoint, so only 4 configurations are new.
-uv run python scripts/run_attack.py \
-  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
-  --pipelines grislain,naive --variant-grid duplication \
-  --variants original,full_duplicate \
-  --dup-rates 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0 \
-  --dup-copies 2,3,5,10 --base-dup-rate 1.0 \
-  --epsilons inf,1 --modes unified \
-  --n-tokens 32 --delta 1e-6 \
-  --members 1000 --non-members 1000 --targets-per-class 250 \
-  --seeds 42,43,44
-```
-
-`runs/gemma4/mia` on purpose — the same directory as Block A, for the reason given
-in §3: a duplicated cell is only readable as a difference from the `original` cell
-at the same pipeline, mode, ε and seed, and a difference cannot be taken across two
-files. Shared cells are skipped by the checkpoint, so the overlap is free.
-
-`--variants original,full_duplicate` drops `partial_overlap` from the duplication
-grid. That axis is not part of this request and would add roughly 6 GPU-hours.
-
-### 8.5 One directory, one model
+### 8.2a One directory, one model
 
 Cell keys carry the configuration but **not** the generator, so the same
 configuration produces the same key under both models. Pointing a Gemma run at a
 Qwen directory would find every cell already done and exit successfully having
 measured nothing.
 
-`CheckpointedRun` refuses that: it compares the generator in `meta` and in the rows
-against the one being run and aborts with the two names. The model is deliberately
-kept out of the key rather than added to it — adding it would change every key
-already written and re-run every finished cell of the existing matrix.
+`CheckpointedRun` refuses that: it compares the generator recorded in `meta` and in
+the rows against the one being run, and aborts naming both. The model is
+deliberately kept out of the key rather than added to it — adding it would change
+every key already written and re-run every finished cell of the existing matrix.
 
 So: `runs/gemma4/...` for this campaign, never the Qwen directories. Each result row
-now also carries its own `generator` column, so the two campaigns can be merged for
+also carries its own `generator` column, so the two campaigns can be merged for
 reporting without losing track of which model produced which row.
+
+### 8.3 Block A — clean corpus across ε
+
+Grislain only, attack only. `original` carries no duplication, so these cells are
+both the model's own baseline and the control every Block B cell is subtracted
+from.
+
+```bash
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
+  --pipelines grislain --variant-grid base --variants original \
+  --epsilons inf,0.5,1,5,16 --modes unified \
+  --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 250 \
+  --seeds 42,43,44
+```
+
+15 cells. Qwen counterparts: ε ∈ {∞, 1, 5, 16} come from series 12; **ε = 0.5 comes
+from the earlier `runs/mia_main`** (same `n_tokens`, δ, target count, seeds and
+mode, so the values are comparable). The three defects fixed since that run — the
+tie rejection, the coupled random streams, the log-scale ranking — all act on
+duplicated corpora or on Koga, and `original` under Grislain is neither. State the
+cross-series origin of that one point wherever it is plotted.
+
+### 8.4 Block B — full duplicates across ε
+
+No `original` in this command: Block A already wrote it at ε ∈ {∞, 1, 5}, and both
+blocks share `runs/gemma4/mia`, so the control each duplicated cell is subtracted
+from is in the same file. **That only holds while the two ε lists overlap on
+{∞, 1, 5}.** Change Block A's list and this command loses its control silently.
+
+Two invocations, as in the Qwen run: the default `--dup-rates` stop at 0.9, and the
+copies ladder is anchored at `--base-dup-rate`, so one call cannot produce both
+ladders.
+
+```bash
+# rate ladder 0.1-1.0, plus the copies ladder on a 30%-duplicated corpus
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
+  --pipelines grislain --variant-grid duplication --variants full_duplicate \
+  --dup-rates 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0 --dup-copies 2,5,10 \
+  --epsilons inf,1,5 --modes unified \
+  --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 250 \
+  --seeds 42,43,44
+
+# the copies ladder again on a fully duplicated corpus (figure N6).
+# Same flags, --base-dup-rate 1.0; the rate ladder repeats identically and is skipped.
+uv run python scripts/run_attack.py \
+  --generator google/gemma-4-12B-it --output-dir runs/gemma4/mia \
+  --pipelines grislain --variant-grid duplication --variants full_duplicate \
+  --dup-rates 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0 --dup-copies 2,5,10 \
+  --base-dup-rate 1.0 \
+  --epsilons inf,1,5 --modes unified \
+  --n-tokens 32 --delta 1e-6 \
+  --members 1000 --non-members 1000 --targets-per-class 250 \
+  --seeds 42,43,44
+```
+
+16 duplicated configurations x 3 budgets x 3 seeds = 144 cells.
+
+The rate ladder is kept at Qwen's ten values. It is the dose-response curve — the
+claim being replicated is that leakage tracks duplication, and the copies ladder
+alone would show only the coarse half of it. Dropping the rate ladder would cut
+Block B to 54 cells and about 4.7 GPU-hours.
+
+### 8.5 What the ε = 5 duplicated cells can and cannot say
+
+Grislain's duplicated cells on Qwen exist at ε ∈ {∞, 1} only; the earlier run's
+ε ∈ {4, 8} duplicated cells were invalidated by the tie-rejection defect. Nothing on
+Qwen matches ε = 5 with duplication, and by decision none is being added.
+
+So, of the three budgets in Block B:
+
+| budget | duplication delta on Gemma | matched delta on Qwen |
+|---|---|---|
+| ∞ | yes | yes |
+| 1 | yes | yes |
+| 5 | yes | **no** |
+
+The ε = 5 rows are still measurable and still useful: the control comes from Block A
+at the same budget, so the duplication delta at ε = 5 is well defined *within Gemma*,
+and it extends the budget axis to three points for that model. What it cannot do is
+carry a cross-model claim on its own. Wherever the two models are compared, that
+comparison rests on ε ∈ {∞, 1}; ε = 5 belongs to the within-Gemma trend.
+
+Say this in the text rather than letting a reader infer three paired budgets from a
+three-column figure.
 
 ### 8.6 Expected cost
 
-Derived from measured Qwen cell times, scaled by 1.4x for 12B against 9B. Gemma 4's
-sliding-window attention (5 layers of every 6) makes its KV cache smaller than a
+Derived from measured Qwen cell times, scaled 1.4x for 12B against 9B. Gemma 4's
+sliding-window attention (5 of every 6 layers) keeps its KV cache below a
 fully-attentive model of the same size, so this is an upper estimate.
 
 | block | cells | GPU-h |
 |---|---|---|
-| A — attack, clean corpus | 18 | 1.5 |
-| A — utility, clean corpus | 18 | 0.7 |
-| B — full duplicates + control, grislain | 114 | 9.9 |
-| B — full duplicates + control, naive | 57 | 3.0 |
-| shared between A and B (`original` at ε=∞) | −6 | −0.4 |
-| **total** | **201** | **≈15** |
+| A — clean corpus, attack | 15 | 1.3 |
+| B — full duplicates, attack | 144 | 12.4 |
+| **total** | **159** | **≈14** |
 
-Blocks A and B share the six `original`, ε=∞ cells, so the second command to reach
-them skips them. That is the point of pointing both at one directory, and the row
-above is there so the counts add up rather than looking like an arithmetic slip.
+Book 24 hours: the download (~24 GB), the pre-flight, one restart and the transfer
+back. Weights are ~24 GB in bf16 on a 48 GB card — comfortable, but do not run a
+second sweep beside it (§1).
 
-Book 24–28 hours to cover the download (~24 GB), the pre-flight, one restart and
-the transfer back. Weights are ~24 GB in bf16 on a 48 GB card — comfortable, but do
-not run a second sweep beside it (§1).
+Out of scope for this campaign, and therefore absent from any claim it supports:
+Koga, `partial_overlap`, `naive`, and utility. Without utility there is no
+privacy-utility plane for Gemma, so the finding that leakage stayed flat across a
+4x budget change while utility rose 11x remains a Qwen-only result.
 
 **Do not quantise**, not even to fit a larger model. Grislain clips and sums raw
 logits under a sensitivity bound; quantisation noise would land directly on the
