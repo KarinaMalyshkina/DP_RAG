@@ -197,7 +197,7 @@ print(f"bf16 supported: {torch.cuda.is_bf16_supported()}")
 model, tokenizer = load_generator(model_id, "cuda")
 print(f"loaded dtype: {model.dtype}")
 if model.dtype == torch.float32:
-    raise SystemExit("ERROR: model loaded in fp32 — a 9B model will not fit alongside activations.")
+    raise SystemExit("ERROR: model loaded in fp32 — the generator will not fit alongside activations.")
 
 messages = [{"role": "user", "content": "Does this appear in the context? Answer with Yes or No."}]
 prompt = chat_prompt(tokenizer, messages, tokenize=False, add_generation_prompt=True)
@@ -208,11 +208,21 @@ ids = tokenizer(prompt, return_tensors="pt").input_ids.to("cuda")
 # Via the framework helper, so this also exercises the logits_to_keep path the
 # whole matrix depends on for memory.
 first = int(last_token_logits(model, input_ids=ids)[0].argmax())
-print(f"first generated token: {first} -> {tokenizer.decode([first])!r}")
-if "think" in tokenizer.decode([first]).lower():
+decoded = tokenizer.decode([first])
+print(f"first generated token: {first} -> {decoded!r}")
+# Every reasoning family marks the block differently, and matching only Qwen's
+# "<think>" passes models that open theirs some other way: Gemma 4 writes
+# "<|channel>thought", which does not contain the substring "think". Reject any
+# special token here as well — at this position the answer itself is expected, so
+# a control token of any kind means thinking was not disabled.
+markers = ("think", "thought", "channel", "reason", "analysis")
+if first in set(tokenizer.all_special_ids or []) or any(m in decoded.lower() for m in markers):
     raise SystemExit(
-        "ERROR: the model still wants to emit a <think> token. Gray-box scores would be "
-        "meaningless — check that enable_thinking=False reached apply_chat_template."
+        f"ERROR: the first generated token is {decoded!r}, not an answer. Gray-box scores read "
+        "exactly this position, so they would measure the model opening a reasoning block "
+        "rather than membership. Check that thinking is disabled for this template — Qwen "
+        "takes enable_thinking=False; Gemma 4's template instead pre-fills an already-closed "
+        "thought channel, and the prompt tail printed above should end with one."
     )
 
 allocated = torch.cuda.memory_allocated() / 1024**3
