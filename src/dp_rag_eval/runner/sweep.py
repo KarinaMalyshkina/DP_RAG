@@ -490,6 +490,18 @@ def build_pipeline(
 # ---------------------------------------------------------------------------
 
 
+# Statuses that do NOT count as a finished cell. A crashed cell measured nothing, so
+# treating it as done means a re-run skips it and the hole is never filled -- the
+# command then reports success with a gap in the matrix. Three cells of the Gemma 4
+# run died in DP retrieval this way.
+#
+# Expressed as what to retry rather than what to keep, so a row from an older
+# checkpoint that predates the status column still counts as finished. INFEASIBLE is
+# finished on purpose: that is the calibration guard deciding, not a failure, and
+# re-running cannot change its mind.
+RETRY_STATUSES = frozenset({"ERROR"})
+
+
 class CheckpointedRun:
     """Append-only result store that a killed run can resume from.
 
@@ -526,7 +538,10 @@ class CheckpointedRun:
             try:
                 saved = json.loads(self.results_path.read_text(encoding="utf-8"))
                 self.rows = saved.get("results", [])
-                self.done = {r["cell"] for r in self.rows}
+                self.done = {r["cell"] for r in self.rows if r.get("status") not in RETRY_STATUSES}
+                crashed = len(self.rows) - len(self.done)
+                if crashed:
+                    logger.info("Checkpoint: %d cell(s) recorded ERROR and will be retried", crashed)
                 self.meta_history = list(saved.get("meta_history", []))
                 previous = saved.get("meta")
                 if previous and previous != meta and previous not in self.meta_history:
@@ -569,8 +584,12 @@ class CheckpointedRun:
 
     def record(self, row: dict[str, Any], predictions: list[dict[str, Any]] | None = None) -> None:
         """Persist one finished cell. Safe to kill the process right after this returns."""
+        # A retried cell replaces its earlier ERROR row rather than sitting beside it:
+        # two rows with one key would double-count in every reader downstream.
+        self.rows = [r for r in self.rows if r.get("cell") != row["cell"]]
         self.rows.append(row)
-        self.done.add(row["cell"])
+        if row.get("status") not in RETRY_STATUSES:
+            self.done.add(row["cell"])
         if predictions:
             with self.predictions_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"cell": row["cell"], "predictions": predictions}, ensure_ascii=False) + "\n")

@@ -120,3 +120,43 @@ def test_a_directory_with_no_recorded_generator_still_resumes(tmp_path) -> None:
     """A checkpoint that predates the field must not become unreadable."""
     CheckpointedRun(tmp_path, {}, ["pipeline", "status"]).record({"cell": "a"})
     assert CheckpointedRun(tmp_path, {"generator": "google/gemma-4-12B-it"}, ["pipeline", "status"]).is_done("a")
+
+
+# ---------------------------------------------------------------------------
+# A crashed cell is not a finished cell
+# ---------------------------------------------------------------------------
+#
+# Three cells of the Gemma 4 matrix died with "probabilities contain NaN" in DP
+# retrieval. The checkpoint had recorded them, and `done` was built from every row
+# regardless of status — so the obvious fix, re-running the command, would have
+# skipped them and reported success with a hole in the matrix.
+
+
+def test_a_crashed_cell_is_retried(tmp_path) -> None:
+    first = run_dir(tmp_path, "g")
+    first.record({"cell": "c1", "generator": "g", "status": "ERROR", "error": "probabilities contain NaN"})
+    assert not run_dir(tmp_path, "g").is_done("c1")
+
+
+def test_a_finished_cell_is_not_retried(tmp_path) -> None:
+    first = run_dir(tmp_path, "g")
+    first.record({"cell": "c1", "generator": "g", "status": "OK"})
+    assert run_dir(tmp_path, "g").is_done("c1")
+
+
+def test_infeasible_counts_as_finished(tmp_path) -> None:
+    """The calibration guard deciding, not a failure: re-running cannot change it."""
+    first = run_dir(tmp_path, "g")
+    first.record({"cell": "c1", "generator": "g", "status": "INFEASIBLE"})
+    assert run_dir(tmp_path, "g").is_done("c1")
+
+
+def test_a_retry_replaces_the_error_row(tmp_path) -> None:
+    """Two rows under one key would double-count in every reader downstream."""
+    run = run_dir(tmp_path, "g")
+    run.record({"cell": "c1", "generator": "g", "status": "ERROR", "error": "boom"})
+    run.record({"cell": "c1", "generator": "g", "status": "OK"})
+
+    rows = [r for r in run.rows if r["cell"] == "c1"]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "OK"

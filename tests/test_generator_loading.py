@@ -217,3 +217,47 @@ def test_an_unreadable_config_does_not_fail_the_load(monkeypatch) -> None:
 
     monkeypatch.setattr(loading, "AutoConfig", Auto)
     assert loading._preferred_attn("Qwen/Qwen3.5-9B", "sdpa") == "sdpa"
+
+
+# ---------------------------------------------------------------------------
+# Vocabulary width
+# ---------------------------------------------------------------------------
+#
+# Multimodal wrappers nest the language model's fields. Gemma 4's
+# ``Gemma4UnifiedConfig`` has no ``vocab_size`` at all, and reading the top level
+# raised AttributeError on the pod after the checkpoint had already downloaded.
+
+
+class _Cfg:
+    def __init__(self, **fields) -> None:
+        for key, value in fields.items():
+            setattr(self, key, value)
+
+
+class _Model:
+    def __init__(self, config) -> None:
+        self.config = config
+
+
+def test_vocab_size_reads_a_plain_config() -> None:
+    assert loading.vocab_size_of(_Model(_Cfg(vocab_size=151936))) == 151936
+
+
+def test_vocab_size_falls_through_to_a_text_subconfig() -> None:
+    """The Gemma 4 shape: nothing at the top level, everything one level down."""
+    model = _Model(_Cfg(text_config=_Cfg(vocab_size=262144)))
+    assert loading.vocab_size_of(model) == 262144
+
+
+def test_vocab_size_falls_back_to_the_tokenizer() -> None:
+    assert loading.vocab_size_of(_Model(_Cfg()), FakeTokenizer(50257)) == 50257
+
+
+def test_vocab_size_prefers_the_config_over_the_tokenizer() -> None:
+    """A padded embedding matrix is wider than the tokenizer, and it indexes the logits."""
+    assert loading.vocab_size_of(_Model(_Cfg(vocab_size=151936)), FakeTokenizer(151665)) == 151936
+
+
+def test_vocab_size_raises_when_nothing_knows() -> None:
+    with pytest.raises(AttributeError, match="no vocab_size"):
+        loading.vocab_size_of(_Model(_Cfg()))

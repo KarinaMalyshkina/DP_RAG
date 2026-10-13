@@ -40,6 +40,7 @@ from dp_rag_eval.pipelines.loading import (
     Embedder,
     chat_prompt,
     forward_logits,
+    vocab_size_of,
     yes_no_token_ids,
     yes_probability,
 )
@@ -112,7 +113,7 @@ class KogaPipeline:
         # sets it explicitly so the derived total delta lands on the requested value.
         self.delta1: float | None = None
         self._calibration: CalibrationResult | None = None
-        self.vocab_size = int(generator.config.vocab_size)
+        self.vocab_size = vocab_size_of(generator, tokenizer)
         # LD-Gumbel failure bookkeeping, surfaced per experiment cell. A high rate means
         # the Limited-Domain threshold (~log(2/delta)/eps votes) exceeds what n_split
         # voters can supply, so the mechanism returns nothing rather than a noisy answer.
@@ -462,7 +463,15 @@ class KogaPipeline:
         """
         counts = torch.bincount(next_tokens.flatten(), minlength=self.vocab_size).to(torch.float64)
         k_bar = min(self.n_split, self.vocab_size)
-        sorted_counts, sorted_idx = torch.sort(counts, descending=True)
+        # ``stable=True`` decides the ties, and there are a great many of them: with
+        # n_split voters over a 248k-token vocabulary, at most n_split tokens have a
+        # nonzero count and every remaining domain slot is filled from a sea of zeros.
+        # Which zero-count tokens land inside the domain is arbitrary either way, but
+        # an unstable sort makes it arbitrary *per platform* — the same votes then put
+        # a Yes token in the domain on one machine and outside it on another, turning
+        # this score from a tiny value into -inf. Stability costs nothing here and is
+        # what lets a cell reproduce off the box it was measured on.
+        sorted_counts, sorted_idx = torch.sort(counts, descending=True, stable=True)
 
         h_perp = float(sorted_counts[k_bar]) if k_bar < self.vocab_size else 0.0
         h_perp += 1.0 + math.log(min(2.0, k_bar, self.vocab_size - k_bar) / self.dp_delta) / self.dp_eps

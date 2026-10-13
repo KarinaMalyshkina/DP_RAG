@@ -32,7 +32,7 @@ import torch
 
 from dp_rag_eval.core.types import Document
 from dp_rag_eval.pipelines import Embedder, GrislainPipeline, KogaPipeline, load_generator, resolve_device
-from dp_rag_eval.pipelines.loading import chat_prompt, forward_logits, supports_thinking
+from dp_rag_eval.pipelines.loading import chat_prompt, forward_logits, supports_thinking, vocab_size_of
 
 logger = logging.getLogger("verify_optimizations")
 
@@ -171,7 +171,7 @@ def main() -> None:
     print(f"generator: {args.generator}   device: {device}")
     generator, tokenizer = load_generator(args.generator, device, dtype=args.dtype)
     embedder = Embedder(args.embedder, device)
-    print(f"dtype: {generator.dtype}   vocab: {generator.config.vocab_size}")
+    print(f"dtype: {generator.dtype}   vocab: {vocab_size_of(generator, tokenizer)}")
     print()
 
     results: dict[str, bool] = {}

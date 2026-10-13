@@ -241,6 +241,29 @@ def _assert_lm_head(model, tokenizer, device: str) -> None:
     logger.info("Logit head verified: %d-wide over a %d-token vocabulary", width, len(tokenizer))
 
 
+def vocab_size_of(model, tokenizer=None) -> int:
+    """Vocabulary width of a generator, wherever its config happens to keep it.
+
+    Multimodal wrappers nest the language model's fields one level down: Gemma 4's
+    ``Gemma4UnifiedConfig`` has no ``vocab_size`` at all, only
+    ``text_config.vocab_size``, and reading the top level raises ``AttributeError``.
+
+    The tokenizer is the last resort rather than the first, because a checkpoint may
+    pad its embedding matrix past the tokenizer's length — Qwen is 262144 wide over
+    151665 tokens — and it is the wider number that indexes a logit vector.
+    """
+    config = getattr(model, "config", model)
+    for candidate in (config, getattr(config, "text_config", None)):
+        if candidate is None:
+            continue
+        size = getattr(candidate, "vocab_size", None)
+        if isinstance(size, int) and size > 0:
+            return size
+    if tokenizer is not None:
+        return len(tokenizer)
+    raise AttributeError(f"{type(config).__name__} exposes no vocab_size, and no tokenizer was given")
+
+
 def load_generator(
     model_id: str,
     device: str,

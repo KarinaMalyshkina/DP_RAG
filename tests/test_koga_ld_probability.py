@@ -37,7 +37,9 @@ class _Bare:
 def simulate(votes: torch.Tensor, vocab: int, n_split: int, eps: float, delta: float, yes: list[int], draws: int):
     """Draw the upstream rule directly: Gumbel(0, 1/eps) on the top-k plus reject."""
     counts = torch.bincount(votes, minlength=vocab).to(torch.float64)
-    sorted_counts, sorted_idx = torch.sort(counts, descending=True)
+    # Stable, to match the implementation: the domain's zero-count slots must be the
+    # same tokens here as there, or the simulation checks a different domain.
+    sorted_counts, sorted_idx = torch.sort(counts, descending=True, stable=True)
     h_perp = float(sorted_counts[n_split])
     h_perp += 1.0 + math.log(min(2.0, n_split, vocab - n_split) / delta) / eps
     values = torch.cat([sorted_counts[:n_split], torch.tensor([h_perp], dtype=torch.float64)])
@@ -126,6 +128,13 @@ def test_a_yes_token_with_no_votes_keeps_a_tiny_but_real_chance():
     the platform: the value is small enough that one machine returned a denormal and
     another returned exactly zero. A finite logarithm says "possible but unlikely"
     on every machine, which is what the mechanism guarantees.
+
+    It then failed on Linux for a second, unrelated reason, and that one was worth
+    having found: which zero-count tokens fill the domain was decided by
+    ``torch.sort``'s tie-breaking, which is not stable on every backend. Token 7 sat
+    inside the domain on one platform and outside it on another, so the same votes
+    gave a tiny value here and ``-inf`` there. The sort is now stable in both the
+    implementation and ``simulate`` above; this test is what pins that.
     """
     no_votes = log_score([3] * 16)
     with_votes = log_score([7] * 8 + [3] * 8)

@@ -29,6 +29,14 @@ export HF_HOME="$WORKSPACE/hf-cache"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 mkdir -p "$HF_HOME"
 
+# uv's package cache on the volume too. Some RunPod images already set this, which is
+# how it happened to survive on the box this was written from -- but relying on the
+# image means a pod built from a different one silently caches to the container
+# filesystem, which is wiped on recreation, and re-downloads ~10 GB of wheels. Pinning
+# it here makes the placement ours rather than the image's.
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$WORKSPACE/.cache/uv}"
+mkdir -p "$UV_CACHE_DIR"
+
 # This file is REWRITTEN on every bootstrap, including the re-run after a pod
 # restart. Nothing hand-edited may live here — it would be silently lost, and a
 # silently lost TELEGRAM_BOT_TOKEN means no notifications and no error either
@@ -39,6 +47,7 @@ cat > "$REPO_ROOT/.env.gpu" <<EOF
 # Put credentials in .env.secrets instead; it is sourced below and never rewritten.
 export HF_HOME="$HF_HOME"
 export HF_HUB_ENABLE_HF_TRANSFER=1
+export UV_CACHE_DIR="$UV_CACHE_DIR"
 export TOKENIZERS_PARALLELISM=false
 
 if [ -f "$REPO_ROOT/.env.secrets" ]; then
